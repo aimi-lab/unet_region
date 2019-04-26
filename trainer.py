@@ -11,17 +11,17 @@ from region_loss import BCERegionLoss
 
 
 class Trainer:
-    def __init__(self, model, dataloaders, params, run_dir):
+    def __init__(self, model, dataloaders, cfg, run_dir):
         self.model = model
         self.dataloaders = dataloaders
-        self.params = munch.Munch(params)
         self.run_dir = run_dir
+        self.cfg = cfg
 
-        self.device = torch.device('cuda' if self.params.cuda else 'cpu')
+        self.device = torch.device('cuda' if self.cfg.cuda else 'cpu')
 
         # self.criterion = torch.nn.BCEWithLogitsLoss()
-        self.criterion = BCERegionLoss(self.params.loss_size,
-                                       self.params.in_shape)
+        self.criterion = BCERegionLoss(self.cfg.loss_size,
+                                       self.cfg.in_shape)
 
         utls.setup_logging(run_dir)
         self.logger = logging.getLogger('unet_region')
@@ -35,21 +35,21 @@ class Trainer:
 
         self.optimizer = optim.RMSprop(
             model.parameters(),
-            momentum=self.params.momentum,
-            lr=self.params.lr,
-            alpha=self.params.alpha,
-            eps=self.params.eps,
-            weight_decay=self.params.weight_decay)
+            momentum=self.cfg.momentum,
+            lr=self.cfg.lr,
+            alpha=self.cfg.alpha,
+            eps=self.cfg.eps,
+            weight_decay=self.cfg.weight_decay)
 
     def train(self):
 
         self.logger.info('run_dir: {}'.format(self.run_dir))
 
         best_loss = float('inf')
-        for epoch in range(self.params.epochs):
+        for epoch in range(self.cfg.epochs):
 
             self.logger.info('Epoch {}/{}'.format(epoch + 1,
-                                                  self.params.epochs))
+                                                  self.cfg.epochs))
 
             # Each epoch has a training and validation phase
             for phase in ['train', 'val']:
@@ -80,7 +80,7 @@ class Trainer:
                             loss.backward()
                             self.optimizer.step()
                     running_loss += loss.cpu().detach().numpy()
-                    loss_ = running_loss / ((i + 1) * self.params.batch_size)
+                    loss_ = running_loss / ((i + 1) * self.cfg.batch_size)
                     pbar.set_description('[{}] loss: {:.4f}'.format(
                         phase, loss_))
                     pbar.update(1)
@@ -106,7 +106,7 @@ class Trainer:
                     ]
                     all_ = [
                         tutls.make_grid([im_[i], truth_[i], pred_[i]],
-                                        nrow=self.params.batch_size,
+                                        nrow=self.cfg.batch_size,
                                         padding=10,
                                         pad_value=1.)
                         for i in range(len(truth_))

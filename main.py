@@ -12,62 +12,70 @@ from imgaug import augmenters as iaa
 import numpy as np
 import pandas as pd
 from trainer import Trainer
+import configargparse
 
-root = '/home/laurent.lejeune/medical-labeling'
+p = configargparse.ArgParser(
+    config_file_parser_class=configargparse.YAMLConfigFileParser,
+    default_config_files=['default.yaml'])
+
+p.add('-v', help='verbose', action='store_true')
+
+p.add('--epochs', type=int)  
+p.add('--lr', type=float)  
+p.add('--momentum', type=float)
+p.add('--alpha', type=float)
+p.add('--eps', type=float)
+p.add('--ds-split', type=float)
+p.add('--ds-shuffle', type=bool)
+p.add('--weight-decay', type=float)
+p.add('--batch-size', type=int)
+p.add('--batch-norm', type=bool)
+p.add('--n-workers', type=int)
+p.add('--cuda', type=bool)
+p.add('--out-dir', required=True)
+p.add('--in-dir', required=True)
+p.add('--coordconv', type=bool)
+p.add('--coordconv-r', type=bool)
+p.add('--in-shape', type=int)
+p.add('--loss-size', type=float)
+p.add('--patch-rel-size', type=float)
+p.add('--aug-noise', type=float)
+p.add('--aug-flip-proba', type=float)
+p.add('--aug-some', type=int)
+
+cfg = p.parse_args()
+
+print(cfg)
+
 d = datetime.datetime.now()
-run_dir = pjoin(root, 'unet_region', 'runs', '{:%Y-%m-%d_%H-%M-%S}'.format(d))
+run_dir = pjoin(cfg.out_dir, 'runs', '{:%Y-%m-%d_%H-%M-%S}'.format(d))
 
-params = {
-    'epochs': 80,
-    'lr': 1e-4,
-    'momentum': 0.9,
-    'alpha': 0.99,
-    'eps': 1e-08,
-    'ds_split': 0.8,
-    'ds_shuffle': True,
-    'weight_decay': 0,
-    'batch_size': 8,
-    'batch_norm': True,
-    'num_workers': 4,
-    'cuda': False,
-    'run_dir': run_dir,
-    'with_coordconv': True,
-    'with_coordconv_r': True,
-    'run_dir': run_dir,
-    'in_shape': 256,
-    'patch_rel_size': 0.3,
-    'loss_size': 0.4,
-    'aug_noise': 0.1,
-    'aug_flip_proba': 0.5,
-    'aug_some': 2
-}
-
-in_shape = [params['in_shape']] * 2
+in_shape = [cfg.in_shape] * 2
 
 transf = iaa.Sequential([
     iaa.SomeOf(
         2, [
-            iaa.Fliplr(params['aug_flip_proba']),
-            iaa.AdditiveGaussianNoise(scale=params['aug_noise'] * 255)
+            iaa.Fliplr(cfg.aug_flip_proba),
+            iaa.AdditiveGaussianNoise(scale=cfg.aug_noise * 255)
         ],
         random_order=True)
 ])
 
 loader = pascalVOCLoaderPatch(
-    root,
-    patch_rel_size=params['patch_rel_size'],
+    cfg.in_dir,
+    patch_rel_size=cfg.patch_rel_size,
     augmentations=transf,
-    cuda=params['cuda'],
+    cuda=cfg.cuda,
     do_reshape=True,
-    img_size=params['in_shape'])
+    img_size=cfg.in_shape)
 
 # Creating data indices for training and validation splits:
 dataset_size = len(loader)
-validation_split = 1 - params['ds_split']
+validation_split = 1 - cfg.ds_split
 random_seed = 42
 indices = list(range(dataset_size))
 split = int(np.floor(validation_split * dataset_size))
-if params['ds_shuffle']:
+if cfg.ds_shuffle:
     np.random.seed(random_seed)
     np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
@@ -83,15 +91,15 @@ valid_sampler = SubsetRandomSampler(val_indices)
 
 train_loader = torch.utils.data.DataLoader(
     loader,
-    batch_size=params['batch_size'],
-    num_workers=params['num_workers'],
+    batch_size=cfg.batch_size,
+    num_workers=cfg.n_workers,
     collate_fn=collate_fn_pascal_patch,
     sampler=train_sampler)
 
 val_loader = torch.utils.data.DataLoader(
     loader,
-    num_workers=params['num_workers'],
-    batch_size=params['batch_size'],
+    num_workers=cfg.n_workers,
+    batch_size=cfg.batch_size,
     collate_fn=collate_fn_pascal_patch,
     sampler=valid_sampler)
 
@@ -101,14 +109,14 @@ model = UNet(
     in_channels=3,
     out_channels=1,
     depth=4,
-    cuda=params['cuda'],
-    with_coordconv=params['with_coordconv'],
-    with_coordconv_r=params['with_coordconv_r'],
-    with_batchnorm=params['batch_norm'])
+    cuda=cfg.cuda,
+    with_coordconv=cfg.coordconv,
+    with_coordconv_r=cfg.coordconv_r,
+    with_batchnorm=cfg.batch_norm)
 
 # Save cfg
 with open(pjoin(run_dir, 'cfg.yml'), 'w') as outfile:
-    yaml.dump(params, stream=outfile, default_flow_style=False)
+    yaml.dump(cfg.__dict__, stream=outfile, default_flow_style=False)
 
-trainer = Trainer(model, dataloaders, params, run_dir)
+trainer = Trainer(model, dataloaders, cfg, run_dir)
 trainer.train()
