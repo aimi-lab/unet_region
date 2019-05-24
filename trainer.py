@@ -8,6 +8,8 @@ import torch.optim as optim
 import tqdm
 from os.path import join as pjoin
 from region_loss import BCERegionLoss
+from skimage import transform
+import numpy as np
 
 
 class Trainer:
@@ -32,6 +34,11 @@ class Trainer:
             k: v.to(self.device) if (isinstance(v, torch.Tensor)) else v
             for k, v in batch.items()
         }
+
+        if (cfg.checkpoint_path is not None):
+            self.logger.info('Loading checkpoint: {}'.format(cfg.checkpoint_path))
+            checkpoint = torch.load(cfg.checkpoint_path)
+            self.model.load_state_dict(checkpoint['state_dict'])
 
         self.optimizer = optim.RMSprop(
             model.parameters(),
@@ -130,3 +137,43 @@ class Trainer:
                         },
                         is_best,
                         path=path)
+
+def transform_truth(truth,
+                    shape):
+
+    truth = transform.resize(
+        truth,
+        shape,
+        anti_aliasing=True,
+        mode='reflect')
+
+    truth = np.array(truth)
+    truth = torch.from_numpy(truth[np.newaxis, ...])
+    truth = truth.type(torch.float32)
+
+    return truth
+
+def transform_img(img,
+                  shape,
+                  normalize=None):
+
+    img = transform.resize(
+        img,
+        shape,
+        anti_aliasing=True,
+        mode='reflect')
+
+    img = [img[..., c] for c in range(img.shape[-1])]
+
+    if(normalize is not None):
+        for c in range(3):
+            img[c] = img[c] - normalize['mean'][c]
+
+        for c in range(3):
+            img[c] = img[c] / normalize['mean'][c]
+
+    img = np.array(img)
+    img = torch.from_numpy(img[np.newaxis, ...])
+    img = img.type(torch.float32)
+
+    return img

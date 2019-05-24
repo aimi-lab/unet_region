@@ -15,48 +15,21 @@ from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
 from trainer import Trainer
-import configargparse
 from my_augmenters import rescale_augmenter
+import params
 
-p = configargparse.ArgParser(
-    config_file_parser_class=configargparse.YAMLConfigFileParser,
-    default_config_files=['default.yaml'])
+p = params.get_params()
 
-p.add('-v', help='verbose', action='store_true')
-
-p.add('--data-type')
-p.add('--frames', action='append', type=int)
-p.add('--n-patches', type=int)
-p.add('--checkpoint-path')
-p.add('--epochs', type=int)
-p.add('--lr', type=float)
-p.add('--momentum', type=float)
-p.add('--alpha', type=float)
-p.add('--eps', type=float)
-p.add('--ds-split', type=float)
-p.add('--ds-shuffle', type=bool)
-p.add('--weight-decay', type=float)
-p.add('--batch-size', type=int)
-p.add('--batch-norm', type=bool)
-p.add('--n-workers', type=int)
-p.add('--cuda', default=False, action='store_true')
 p.add('--out-dir', required=True)
 p.add('--in-dir', required=True)
-p.add('--coordconv', type=bool)
-p.add('--coordconv-r', type=bool)
-p.add('--in-shape', type=int)
-p.add('--loss-size', type=float)
-p.add('--patch-rel-size', type=float)
-p.add('--aug-noise', type=float)
-p.add('--aug-flip-proba', type=float)
-p.add('--aug-some', type=int)
 
 cfg = p.parse_args()
 
 print(cfg)
 
 d = datetime.datetime.now()
-run_dir = pjoin(cfg.out_dir, 'runs', '{:%Y-%m-%d_%H-%M-%S}'.format(d))
+ds_dir = os.path.split(cfg.in_dir)[-1]
+run_dir = pjoin(cfg.out_dir, 'runs', '{}_{:%Y-%m-%d_%H-%M-%S}'.format(ds_dir, d))
 
 in_shape = [cfg.in_shape] * 2
 
@@ -118,22 +91,24 @@ pd.DataFrame(val_indices).to_csv(pjoin(run_dir, 'val_sample.csv'))
 train_sampler = SubsetRandomSampler(train_indices)
 valid_sampler = SubsetRandomSampler(val_indices)
 
+worker_init_fn=lambda _: np.random.seed(int(torch.initial_seed())%(2**32-1))
+
+# each batch will give different locations / augmentations
 train_loader = torch.utils.data.DataLoader(
     loader,
     batch_size=cfg.batch_size,
     num_workers=cfg.n_workers,
     collate_fn=collate_fn,
+    worker_init_fn=worker_init_fn,
     sampler=train_sampler)
 
-if (cfg.data_type == 'pascal'):
-    val_loader = torch.utils.data.DataLoader(
-        loader,
-        num_workers=cfg.n_workers,
-        batch_size=cfg.batch_size,
-        collate_fn=collate_fn,
-        sampler=valid_sampler)
-else:
-    val_loader = train_loader
+# each batch will give same locations / augmentations
+val_loader = torch.utils.data.DataLoader(
+    loader,
+    num_workers=cfg.n_workers,
+    batch_size=cfg.batch_size,
+    collate_fn=collate_fn,
+    sampler=valid_sampler)
 
 dataloaders = {'train': train_loader, 'val': val_loader}
 
