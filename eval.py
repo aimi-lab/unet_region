@@ -38,6 +38,10 @@ if ('frames' in train_cfg.keys()):
 else:
     frames_of_train = None
 
+
+def test_fn(x, y, z):
+    print('lala')
+
 cp_path = pjoin(cfg.run_dir, 'checkpoints', 'best_model.pth.tar')
 
 ds_dir = os.path.split(cfg.in_dir)[1]

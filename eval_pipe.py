@@ -37,6 +37,9 @@ run_dirs = [
     'unet_region/runs/Dataset30_2019-05-06_09-59-33'
 ]
 
+def test_fn(x, y, z):
+    print('hihi')
+
 for i in range(len(in_dirs)):
     for j in range(len(in_dirs[i])):
 
