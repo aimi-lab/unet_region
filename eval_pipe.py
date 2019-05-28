@@ -4,16 +4,16 @@ from os.path import join as pjoin
 root_dir = '/home/laurent.lejeune/medical-labeling'
 
 in_dirs = [
+    # [
+    #     'Dataset00',
+    #     'Dataset01',
+    #     'Dataset02',
+    #     'Dataset03',
+    #     'Dataset04',
+    #     'Dataset05'],
     [
-        'Dataset00',
-        'Dataset01',
-        'Dataset02',
-        'Dataset03',
-        'Dataset04',
-        'Dataset05'],
-    [
-    'Dataset10',
-    'Dataset11',
+    # 'Dataset10',
+    # 'Dataset11',
     'Dataset12',
     'Dataset13'
     ],
@@ -39,6 +39,7 @@ run_dirs = [
 
 def test_fn(x, y, z):
     print('hihi')
+
 
 for i in range(len(in_dirs)):
     for j in range(len(in_dirs[i])):

@@ -1,18 +1,42 @@
 import os
+from os.path import join as pjoin
+import train
+import params
 
 root_dir = '/home/laurent.lejeune/medical-labeling'
 
 in_dirs = [
+    'Dataset00',
+    'Dataset10',
     'Dataset20',
-    # 'Dataset10',
+    'Dataset30',
 ]
 
-frames = [15]
+frames = [15, 52, 13, 16]
+
+cuda = True
+
+p = params.get_params()
+cfg = p.parse_args()
+
+# pre-train with pascal
+cfg.out_dir = pjoin(root_dir, 'unet_region')
+cfg.in_dir = root_dir
+cfg.data_type = 'pascal'
+cfg.cuda = cuda
+cfg.checkpoint_path = None
+
+cfg = train.main(cfg)
+cp_pascal = pjoin(cfg.run_dir, 'checkpoints',
+                  'best_model.pth.tar')
 
 for d, f in zip(in_dirs, frames):
-    os.system('python train.py \
---out-dir {}/unet_region \
---in-dir {}/{} \
---data-type medical \
---frames {} \
---checkpoint-path {}/unet_region/runs/2019-05-03_13-56-39/checkpoints/best_model.pth.tar --cuda'.format(root_dir, root_dir, d, f, root_dir))
+    cfg.out_dir = pjoin(root_dir, 'unet_region')
+    cfg.in_dir = pjoin(root_dir, d)
+    cfg.frames = [f]
+    cfg.data_type = 'medical'
+    cfg.checkpoint_path = cp_pascal
+    cfg.cuda = cuda
+
+    train.main(cfg)
+

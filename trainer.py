@@ -23,7 +23,9 @@ class Trainer:
 
         # self.criterion = torch.nn.BCEWithLogitsLoss()
         self.criterion = BCERegionLoss(self.cfg.loss_size,
-                                       self.cfg.in_shape)
+                                       self.cfg.in_shape,
+                                       device=self.device,
+                                       lambda_=self.cfg.loss_lambda)
 
         utls.setup_logging(run_dir)
         self.logger = logging.getLogger('unet_region')
