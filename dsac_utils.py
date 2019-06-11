@@ -15,23 +15,30 @@ def make_init_snake(radius, shape, L):
     return init_snake
 
 
-def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma,
-                  max_px_move,
+def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, max_px_move,
                   delta_s):
     # generate kernels for spatial gradients
     grad_u_weights = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]],
                                   dtype=torch.float32)
     grad_v_weights = torch.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]],
                                   dtype=torch.float32)
-    grad_u_weights = grad_u_weights.expand(map_e.shape[1], 1, 3, 3)
-    grad_v_weights = grad_v_weights.expand(map_e.shape[1], 1, 3, 3)
+    grad_u_weights = grad_u_weights.expand(1, 1, 3, 3)
+    grad_v_weights = grad_v_weights.expand(1, 1, 3, 3)
 
     for i in range(map_e.shape[1]):
+
         # compute spatial gradient
-        Du = F.conv2d(map_e[i, ...],
-                      grad_u_weights, groups=map_e.shape[1], padding=1)
-        Dv = F.conv2d(map_e[i, ...],
-                      grad_v_weights, groups=map_e.shape[1], padding=1)
+        Du = F.conv2d(
+            map_e[i, ...].unsqueeze(0),
+            grad_u_weights,
+            groups=map_e.shape[1],
+            padding=1).squeeze()
+
+        Dv = F.conv2d(
+            map_e[i, ...].unsqueeze(0),
+            grad_v_weights,
+            groups=map_e.shape[1],
+            padding=1).squeeze()
 
         u = init_snake[:, 0:1]
         v = init_snake[:, 1:2]
@@ -40,51 +47,44 @@ def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma,
         snake_hist = []
 
         # optimize
-        u, v, du, dv = active_contour_step(Du, Dv, du, dv,
-                                           u, v, map_a[i, ...],
-                                           map_b[i, ...],
-                                           map_k[i, ...],
-                                           gamma,
-                                           max_px_move,
-                                           delta_s)
+        u, v, du, dv = active_contour_step(
+            Du, Dv, du, dv, u, v, map_a[i, ...], map_b[i, ...], map_k[i, ...],
+            torch.tensor(gamma), max_px_move, delta_s)
         snake_hist.append(np.array([u[:, 0], v[:, 0]]).T)
 
-    return np.array([u[:, 0], v[:, 0]]).T, snake_hist
+    return snake_hist
 
 
 def active_contour_step(Du, Dv, du, dv, snake_u, snake_v, alpha, beta, kappa,
                         gamma, max_px_move, delta_s):
 
+    import pdb; pdb.set_trace()
     L = snake_u.shape[0]
-    M = Du.shape[0]
-    N = Du.shape[1]
-    u = snake_u.round().type(torch.int)
-    v = snake_v.round().type(torch.int)
+    u = snake_u.round().type(torch.long)
+    v = snake_v.round().type(torch.long)
 
     # Explicit time stepping for image energy minimization:
-    fu = tf.gather(tf.reshape(Fu, tf.TensorShape([M * N])), u * M + v)
-    fv = tf.gather(tf.reshape(Fv, tf.TensorShape([M * N])), u * M + v)
-    a = tf.gather(tf.reshape(alpha, tf.TensorShape([M * N])), u * M + v)
-    b = tf.gather(tf.reshape(beta, tf.TensorShape([M * N])), u * M + v)
-    a = tf.squeeze(a)
-    b = tf.squeeze(b)
-    am1 = tf.concat([a[L - 1:L], a[0:L - 1]], 0)
-    a0d0 = tf.diag(a)
-    am1d0 = tf.diag(am1)
-    a0d1 = tf.concat([a0d0[0:L, L - 1:L], a0d0[0:L, 0:L - 1]], 1)
-    am1dm1 = tf.concat([am1d0[0:L, 1:L], am1d0[0:L, 0:1]], 1)
+    fu = Du[u, v]
+    fv = Du[u, v]
+    a = alpha[0, u, v]
+    b = beta[0, u, v]
+    am1 = torch.cat([a[L - 1:L], a[0:L - 1]], 0)
+    a0d0 = torch.diag(a)
+    am1d0 = torch.diag(am1)
+    a0d1 = torch.cat([a0d0[0:L, L - 1:L], a0d0[0:L, 0:L - 1]], 1)
+    am1dm1 = torch.torch([am1d0[0:L, 1:L], am1d0[0:L, 0:1]], 1)
 
-    bm1 = tf.concat([b[L - 1:L], b[0:L - 1]], 0)
-    b1 = tf.concat([b[1:L], b[0:1]], 0)
-    b0d0 = tf.diag(b)
-    bm1d0 = tf.diag(bm1)
-    b1d0 = tf.diag(b1)
-    b0dm1 = tf.concat([b0d0[0:L, 1:L], b0d0[0:L, 0:1]], 1)
-    b0d1 = tf.concat([b0d0[0:L, L - 1:L], b0d0[0:L, 0:L - 1]], 1)
-    bm1dm1 = tf.concat([bm1d0[0:L, 1:L], bm1d0[0:L, 0:1]], 1)
-    b1d1 = tf.concat([b1d0[0:L, L - 1:L], b1d0[0:L, 0:L - 1]], 1)
-    bm1dm2 = tf.concat([bm1d0[0:L, 2:L], bm1d0[0:L, 0:2]], 1)
-    b1d2 = tf.concat([b1d0[0:L, L - 2:L], b1d0[0:L, 0:L - 2]], 1)
+    bm1 = torch.cat([b[L - 1:L], b[0:L - 1]], 0)
+    b1 = torch.cat([b[1:L], b[0:1]], 0)
+    b0d0 = torch.diag(b)
+    bm1d0 = torch.diag(bm1)
+    b1d0 = torch.diag(b1)
+    b0dm1 = torch.cat([b0d0[0:L, 1:L], b0d0[0:L, 0:1]], 1)
+    b0d1 = torch.cat([b0d0[0:L, L - 1:L], b0d0[0:L, 0:L - 1]], 1)
+    bm1dm1 = torch.cat([bm1d0[0:L, 1:L], bm1d0[0:L, 0:1]], 1)
+    b1d1 = torch.cat([b1d0[0:L, L - 1:L], b1d0[0:L, 0:L - 1]], 1)
+    bm1dm2 = torch.cat([bm1d0[0:L, 2:L], bm1d0[0:L, 0:2]], 1)
+    b1d2 = torch.cat([b1d0[0:L, L - 2:L], b1d0[0:L, 0:L - 2]], 1)
 
     A = -am1dm1 + (a0d0 + am1d0) - a0d1
     B = bm1dm2 - 2 * (bm1dm1 + b0dm1) + (
@@ -153,15 +153,7 @@ def active_contour_step(Du, Dv, du, dv, snake_u, snake_v, alpha, beta, kappa,
                     axis=0),
             ),
             axis=1), tf.squeeze(int_ends_u_prev))
-    #dEb_du = np.sum(js * kappa_collection[:, np.arange(s - 1, -1, -1)], axis=1) * int_ends_v_next.squeeze()
-    #dEb_du -= np.sum(js * kappa_collection[:, js - 1], axis=1) * int_ends_v_prev.squeeze()
-    #dEb_dv = -np.sum(js * kappa_collection[np.roll(np.arange(L), 1), :][:, np.arange(s - 1, -1, -1)],
-    #                 axis=1) * int_ends_u_next.squeeze()
-    #dEb_dv += np.sum(js * kappa_collection[np.roll(np.arange(L), 1), :][:, js - 1], axis=1) * int_ends_u_prev.squeeze()
 
-    # Movements are capped to max_px_move per iteration:
-    #du = -max_px_move*tf.tanh( (fu - tf.reshape(dEb_du,fu.shape) + 2*tf.matmul(A/delta_s+B/tf.square(delta_s),snake_u))*gamma )*0.5 + du*0.5
-    #dv = -max_px_move*tf.tanh( (fv - tf.reshape(dEb_dv,fv.shape) + 2*tf.matmul(A/delta_s+B/tf.square(delta_s),snake_v))*gamma )*0.5 + dv*0.5
     du = -max_px_move * tf.tanh(
         (fu - tf.reshape(dEb_du, fu.shape)) * gamma) * 0.5 + du * 0.5
     dv = -max_px_move * tf.tanh(

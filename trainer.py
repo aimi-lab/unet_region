@@ -1,13 +1,14 @@
 import munch
 import logging
 import pytorch_utils.utils as utls
+import dsac_utils as dutls
 from tensorboardX import SummaryWriter
 from torchvision import utils as tutls
 import torch
 import torch.optim as optim
 import tqdm
 from os.path import join as pjoin
-from region_loss import BCERegionLoss
+from loss_splines import LossSplines
 from skimage import transform
 import numpy as np
 
@@ -22,13 +23,10 @@ class Trainer:
         self.device = torch.device('cuda' if self.cfg.cuda else 'cpu')
 
         # self.criterion = torch.nn.BCEWithLogitsLoss()
-        self.criterion = BCERegionLoss(self.cfg.loss_size,
-                                       self.cfg.in_shape,
-                                       device=self.device,
-                                       lambda_=self.cfg.loss_lambda)
+        self.criterion = LossSplines()
 
         utls.setup_logging(run_dir)
-        self.logger = logging.getLogger('unet_region')
+        self.logger = logging.getLogger('coord_net')
         self.writer = SummaryWriter(run_dir)
 
         # convert batch to device
@@ -38,15 +36,14 @@ class Trainer:
         }
 
         if (cfg.checkpoint_path is not None):
-            self.logger.info('Loading checkpoint: {}'.format(cfg.checkpoint_path))
+            self.logger.info('Loading checkpoint: {}'.format(
+                cfg.checkpoint_path))
             checkpoint = torch.load(cfg.checkpoint_path)
             self.model.load_state_dict(checkpoint['state_dict'])
 
-        self.optimizer = optim.RMSprop(
+        self.optimizer = optim.Adam(
             model.parameters(),
-            momentum=self.cfg.momentum,
             lr=self.cfg.lr,
-            alpha=self.cfg.alpha,
             eps=self.cfg.eps,
             weight_decay=self.cfg.weight_decay)
 
@@ -57,11 +54,10 @@ class Trainer:
         best_loss = float('inf')
         for epoch in range(self.cfg.epochs):
 
-            self.logger.info('Epoch {}/{}'.format(epoch + 1,
-                                                  self.cfg.epochs))
+            self.logger.info('Epoch {}/{}'.format(epoch + 1, self.cfg.epochs))
 
             # Each epoch has a training and validation phase
-            for phase in ['train', 'val']:
+            for phase in self.dataloaders.keys():
                 if phase == 'train':
                     self.model.train()
                 else:
@@ -69,44 +65,67 @@ class Trainer:
 
                 running_loss = 0.0
 
-                # Iterate over data.
-                pbar = tqdm.tqdm(total=len(self.dataloaders[phase]))
-                samp_ = 0
-                for i, data in enumerate(self.dataloaders[phase]):
+                if (phase in ['train', 'val']):
+                    # Iterate over data.
+                    pbar = tqdm.tqdm(total=len(self.dataloaders[phase]))
+                    samp_ = 0
+                    for i, data in enumerate(self.dataloaders[phase]):
+                        data = self.batch_to_device(data)
+
+                        # zero the parameter gradients
+                        self.optimizer.zero_grad()
+
+                        # forward
+                        # track history if only in train
+                        with torch.set_grad_enabled(phase == 'train'):
+                            res = self.model(data['image'])
+                            data, alpha, beta, kappa = res
+
+                            # generate initial snake
+                            init_snake = dutls.make_init_snake(
+                                int(self.cfg.in_shape*self.cfg.init_radius),
+                                self.cfg.in_shape,
+                                self.cfg.length_snake)
+                            init_snake = torch.from_numpy(init_snake)
+
+                            # run inference on batch
+                            snakes = dutls.acm_inference(data, alpha,
+                                                         beta,
+                                                         kappa,
+                                                         init_snake,
+                                                         self.cfg.gamma,
+                                                         self.cfg.max_px_move,
+                                                         self.cfg.delta_s)
+
+                            loss = self.criterion(out,
+                                                  data['label/segmentation'])
+
+                            # backward + optimize only if in training phase
+                            if phase == 'train':
+                                loss.backward()
+                                self.optimizer.step()
+                        running_loss += loss.cpu().detach().numpy()
+                        loss_ = running_loss / ((i + 1) * self.cfg.batch_size)
+                        pbar.set_description('[{}] loss: {:.4f}'.format(
+                            phase, loss_))
+                        pbar.update(1)
+                        samp_ += 1
+
+                    pbar.close()
+                    self.writer.add_scalar('{}/loss'.format(phase),
+                                           loss_,
+                                           epoch)
+
+                # make preview images
+                if phase == 'prev':
+                    data = next(iter(self.dataloaders[phase]))
                     data = self.batch_to_device(data)
-
-                    # zero the parameter gradients
-                    self.optimizer.zero_grad()
-
-                    # forward
-                    # track history if only in train
-                    with torch.set_grad_enabled(phase == 'train'):
-                        out = self.model(data['image'])
-                        loss = self.criterion(out, data['label/segmentation'])
-
-                        # backward + optimize only if in training phase
-                        if phase == 'train':
-                            loss.backward()
-                            self.optimizer.step()
-                    running_loss += loss.cpu().detach().numpy()
-                    loss_ = running_loss / ((i + 1) * self.cfg.batch_size)
-                    pbar.set_description('[{}] loss: {:.4f}'.format(
-                        phase, loss_))
-                    pbar.update(1)
-                    samp_ += 1
-
-                pbar.close()
-                self.writer.add_scalar('{}/loss'.format(phase), loss_, epoch)
-
-                # make test images
-                if phase == 'val':
-                    data_preview = next(iter(self.dataloaders[phase]))
-                    pred_ = torch.sigmoid(self.model(data['image'])).cpu()
+                    pred_ = self.model(data['image']).cpu()
                     pred_ = [
                         pred_[i, ...].repeat(3, 1, 1)
                         for i in range(pred_.shape[0])
                     ]
-                    im_ = data['image'].cpu()
+                    im_ = data['image_unnormalized'].cpu()
                     im_ = [im_[i, ...] for i in range(im_.shape[0])]
                     truth_ = data['label/segmentation'].cpu()
                     truth_ = [
@@ -115,7 +134,7 @@ class Trainer:
                     ]
                     all_ = [
                         tutls.make_grid([im_[i], truth_[i], pred_[i]],
-                                        nrow=self.cfg.batch_size,
+                                        nrow=len(pred_),
                                         padding=10,
                                         pad_value=1.)
                         for i in range(len(truth_))
@@ -140,42 +159,3 @@ class Trainer:
                         is_best,
                         path=path)
 
-def transform_truth(truth,
-                    shape):
-
-    truth = transform.resize(
-        truth,
-        shape,
-        anti_aliasing=True,
-        mode='reflect')
-
-    truth = np.array(truth)
-    truth = torch.from_numpy(truth[np.newaxis, ...])
-    truth = truth.type(torch.float32)
-
-    return truth
-
-def transform_img(img,
-                  shape,
-                  normalize=None):
-
-    img = transform.resize(
-        img,
-        shape,
-        anti_aliasing=True,
-        mode='reflect')
-
-    img = [img[..., c] for c in range(img.shape[-1])]
-
-    if(normalize is not None):
-        for c in range(3):
-            img[c] = img[c] - normalize['mean'][c]
-
-        for c in range(3):
-            img[c] = img[c] / normalize['mean'][c]
-
-    img = np.array(img)
-    img = torch.from_numpy(img[np.newaxis, ...])
-    img = img.type(torch.float32)
-
-    return img

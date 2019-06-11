@@ -21,6 +21,7 @@ def get_params():
     p.add('--batch-size', type=int)
     p.add('--batch-norm', type=bool)
     p.add('--n-workers', type=int)
+    p.add('--seed', type=int)
     p.add('--fake-len', type=int)
     p.add('--cuda', default=False, action='store_true')
     p.add('--save-train-examples', default=True, action='store_true')
@@ -36,5 +37,13 @@ def get_params():
     p.add('--aug-some', type=int)
 
     p.add('--fix-radius', type=float)
+
+    p.add('--init-radius', type=float)
+    p.add('--length-snake', type=int)
+
+    p.add('--gamma', type=float)
+    p.add('--max-px-move', type=int)
+    p.add('--delta-s', type=int)
+
 
     return p

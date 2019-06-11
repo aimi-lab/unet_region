@@ -22,6 +22,7 @@ batch-size: 4
 batch-norm: True
 
 # dataloader
+seed: 1
 n-workers: 4
 cuda: False
 fake-len: 200
@@ -45,7 +46,7 @@ aug-some: 2
 
 # compute loss on square of relative size
 loss-size: 1.
-loss-lambda: 10
+loss-lambda: 2.
 
 # save training images examples 
 save-train-examples: True
@@ -53,3 +54,10 @@ n-save-train-examples: 10
 
 # fixed radius masks
 fix-radius: 0.05
+
+# for DSAC
+init-radius: 0.1
+length-snake: 30
+gamma: 1.
+max-px-move: 1
+delta-s: 1
