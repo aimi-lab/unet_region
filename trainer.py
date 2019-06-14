@@ -87,6 +87,7 @@ class Trainer:
                                 self.cfg.in_shape,
                                 self.cfg.length_snake)
                             init_snake = torch.from_numpy(init_snake)
+                            init_snake = init_snake.type(torch.float)
 
                             # run inference on batch
                             snakes = dutls.acm_inference(data, alpha,

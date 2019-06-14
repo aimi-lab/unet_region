@@ -58,6 +58,6 @@ fix-radius: 0.05
 # for DSAC
 init-radius: 0.1
 length-snake: 30
-gamma: 1.
+gamma: 0.5
 max-px-move: 1
 delta-s: 1

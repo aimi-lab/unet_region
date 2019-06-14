@@ -151,8 +151,8 @@ if __name__ == "__main__":
 
     cfg = p.parse_args()
     cfg.data_type = 'bing'
-    cfg.out_dir = '/home/ubelix/medical-labeling/unet_region'
-    cfg.in_dir = '/home/ubelix/medical-labeling/bing'
+    cfg.out_dir = '/home/krakapwa/Desktop/data'
+    cfg.in_dir = '/home/krakapwa/Desktop/data/single_buildings/'
     cfg.checkpoint_path = None
     cfg.n_workers = 0
 
