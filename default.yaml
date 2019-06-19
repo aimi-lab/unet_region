@@ -56,8 +56,17 @@ n-save-train-examples: 10
 fix-radius: 0.05
 
 # for DSAC
-init-radius: 0.1
+init-radius: 0.02
 length-snake: 30
-gamma: 0.5
+gamma: 1
 max-px-move: 1
 delta-s: 1
+n-iter: 200
+sigma: 3
+alpha-init-weight: 0.
+alpha-init-bias: 0.015
+beta-init-weight: 0.
+beta-init-bias: 0.01
+kappa-init-weight: 0.
+kappa-init-bias: 10.
+

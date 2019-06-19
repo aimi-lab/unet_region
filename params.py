@@ -44,6 +44,14 @@ def get_params():
     p.add('--gamma', type=float)
     p.add('--max-px-move', type=int)
     p.add('--delta-s', type=int)
+    p.add('--n-iter', type=int)
+    p.add('--sigma', type=float)
+    p.add('--alpha-init-weight', type=float)
+    p.add('--alpha-init-bias', type=float)
+    p.add('--beta-init-weight', type=float)
+    p.add('--beta-init-bias', type=float)
+    p.add('--kappa-init-weight', type=float)
+    p.add('--kappa-init-bias', type=float)
 
 
     return p

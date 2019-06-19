@@ -3,9 +3,12 @@ import numpy as np
 import torch.nn.functional as F
 import torch
 import matplotlib.pyplot as plt
-from skimage.filters import sobel, gaussian
 from skimage.util import img_as_float
+from skimage import segmentation
 from scipy.interpolate import RectBivariateSpline
+import math
+from scipy.ndimage import measurements
+from scipy import interpolate
 
 
 def make_init_snake(radius, shape, L):
@@ -21,33 +24,33 @@ def make_init_snake(radius, shape, L):
 
 
 def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, max_px_move,
-                  delta_s, n_iter, sigma):
+                  n_iter, verbose=False):
 
-    snake_hist = []
+    snakes = []
     for i in range(map_e.shape[0]):
 
-        # get edge map of data map
-        edge_map = gaussian(map_e[i, 0, ...], sigma)
-        edge_map[0, :] = edge_map[1, :]
-        edge_map[-1, :] = edge_map[-2, :]
-        edge_map[:, 0] = edge_map[:, 1]
-        edge_map[:, -1] = edge_map[:, -2]
+        # # get edge map of data map
+        # edge_map = gaussian(map_e[i, 0, ...], sigma)
+        # edge_map[0, :] = edge_map[1, :]
+        # edge_map[-1, :] = edge_map[-2, :]
+        # edge_map[:, 0] = edge_map[:, 1]
+        # edge_map[:, -1] = edge_map[:, -2]
 
-        snake_hist.append([])
 
         # optimize
-        snake_hist_ = active_contour_steps(
-            edge_map,
+        snake_ = active_contour_steps(
+            map_e[i, 0, ...],
             init_snake,
             alpha=map_a[i, 0, ...],
             beta=map_b[i, 0, ...],
             kappa=map_k[i, 0, ...],
             gamma=gamma,
             max_px_move=max_px_move,
-            max_iterations=n_iter)
-        snake_hist[-1].append(snake_hist_)
+            max_iterations=n_iter,
+            verbose=verbose)
+        snakes.append(snake_)
 
-    return snake_hist
+    return snakes
 
 
 
@@ -109,28 +112,6 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
     img = img_as_float(image)
     RGB = img.ndim == 3
 
-    # Find edges using sobel:
-    if w_edge != 0:
-        if RGB:
-            edge = [sobel(img[:, :, 0]), sobel(img[:, :, 1]),
-                    sobel(img[:, :, 2])]
-        else:
-            edge = [sobel(img)]
-        for i in range(3 if RGB else 1):
-            edge[i][0, :] = edge[i][1, :]
-            edge[i][-1, :] = edge[i][-2, :]
-            edge[i][:, 0] = edge[i][:, 1]
-            edge[i][:, -1] = edge[i][:, -2]
-    else:
-        edge = [0]
-
-    # Superimpose intensity and edge images:
-    if RGB:
-        img = w_line*np.sum(img, axis=2) \
-            + w_edge*sum(edge)
-    else:
-        img = w_line*img + w_edge*edge[0]
-
     # Interpolate for smoothness:
     intp = RectBivariateSpline(np.arange(img.shape[1]),
                                np.arange(img.shape[0]),
@@ -163,7 +144,7 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
     B = Bd0 + Bd1 + Bdm1 + Bd2 + Bdm2
         
     # make matrix that will be inverted
-    M_internal = gamma * np.eye(n) + (A + B )
+    M_internal = gamma * np.eye(n) + (A + B)
     inv = np.linalg.inv(M_internal)
 
     # Explicit time stepping for image energy minimization:
@@ -176,12 +157,12 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
         # Get kappa values between nodes (balloon term)
         # ----------------
         # make snake vectors at x(s-1), x(s+1)
-        xp1 = np.roll(x, 1)
-        xm1 = np.roll(x, -1)
+        xp1 = np.roll(x, -1)
+        xm1 = np.roll(x, 1)
 
         # make snake vectors at v_(s-1), v_(s+1)
-        yp1 = np.roll(y, 1)
-        ym1 = np.roll(y, -1)
+        yp1 = np.roll(y, -1)
+        ym1 = np.roll(y, 1)
 
         kappa_collection = kappa[fx.round().astype(int),
                                  fy.round().astype(int)]
@@ -195,22 +176,23 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
 
         # contribution from the i+1 triangles
         dEext_dx = (int_ends_y_next / n**2) * np.sum(
-            h * kappa_collection)
-        dEext_dy = (int_ends_y_prev / n**2) * np.sum(
+            h * kappa_collection[::-1])
+        dEext_dx -= (int_ends_x_next / n**2) * np.sum(
             h * kappa_collection)
 
-        # contribution from the i+1 triangles
-        dEext_dx += (int_ends_x_next / n**2) * np.sum(
-            h * kappa_collection)
-        dEext_dy += (int_ends_x_prev / n**2) * np.sum(
-            h * kappa_collection)
+        dEext_dy = (int_ends_y_prev / n**2) * np.sum(
+            h * np.roll(kappa_collection, 1))
+        dEext_dy -= (int_ends_x_prev / n**2) * np.sum(
+            h * np.roll(kappa_collection, 1))
 
         xn = inv @ (gamma*x + fx)
         yn = inv @ (gamma*y + fy)
 
         # Movements are capped to max_px_move per iteration:
-        dx = max_px_move*np.tanh(xn-x + dEext_dx)
-        dy = max_px_move*np.tanh(yn-y + dEext_dy)
+        dx = max_px_move*np.tanh(xn-x + dEext_dx*gamma)
+        dy = max_px_move*np.tanh(yn-y + dEext_dy*gamma)
+        # dx = max_px_move*np.tanh(xn-x + dEext_dx)
+        # dy = max_px_move*np.tanh(yn-y + dEext_dy)
         x += dx
         y += dy
 
@@ -231,125 +213,65 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
                 break
 
     end = time.time()
-    print('finished in {} iterations in {} s'.format(i+1, end-start))
+    if(verbose):
+        print('finished in {} iterations in {} s'.format(i+1, end-start))
     return np.array([x, y]).T
 
-def active_contour_steps_old(edge_map,
-                         du,
-                         dv,
-                         snake,
-                         alpha,
-                         beta,
-                         kappa,
-                         gamma,
-                         max_px_move,
-                         delta_s,
-                         n_iter=100):
+
+def clockwiseangle(origin, point):
+
+    refvec = (1, 0)
+
+    # Vector between point and the origin: v = p - o
+    vector = [point[0] - origin[0], point[1] - origin[1]]
+    # Length of vector: ||v||
+    lenvector = math.hypot(vector[0], vector[1])
+    # If length is zero there is no angle
+    if lenvector == 0:
+        return -math.pi, 0
+    # Normalize vector: v/||v||
+    normalized = [vector[0] / lenvector, vector[1] / lenvector]
+    dotprod = normalized[0] * refvec[0] + normalized[1] * refvec[
+        1]  # x1*x2 + y1*y2
+    diffprod = refvec[1] * normalized[0] - refvec[0] * normalized[
+        1]  # x1*y2 - y1*x2
+    angle = math.atan2(diffprod, dotprod)
+    # Negative angles represent counter-clockwise angles so we need to subtract them
+    # from 2*pi (360 degrees)
+    if angle < 0:
+        return 2 * math.pi + angle
+    # I return first the angle because that's the primary sorting criterium
+    # but if two vectors have the same angle then the shorter distance should come first.
+    return angle
 
 
-    snake_u, snake_v = snake[:, 0].astype(np.float), snake[:, 1].astype(np.float)
+def make_spline_contour(truth, L, s, k, per, ds_contour_rate=0.1):
 
-    L = snake_u.size
-    M = edge_map.shape[0]
-    N = edge_map.shape[1]
-    u = snake_u
-    v = snake_v
 
-    # ----------------
-    # Make matrices A and B as in eq. 2 and 3
-    # ----------------
-    fu = edge_map[u.round().astype(int), v.round().astype(int)]
-    fv = edge_map[u.round().astype(int), v.round().astype(int)]
-    a = alpha[0, u.round().astype(int), v.round().astype(int)].squeeze()
-    b = beta[0, u.round().astype(int), v.round().astype(int)].squeeze()
+    truth_ = np.pad(truth, ((1, ), (1, )), mode='constant',
+                    constant_values=False)
+    contour = segmentation.find_boundaries(truth_, mode='thick')
+    y_c, x_c = measurements.center_of_mass(truth)
+    y, x = np.where(contour)
+    x -= 1
+    y -= 1
 
-    a_diag = np.diag(a)
-    A = np.roll(a_diag, -1, axis=0) + \
-        np.roll(a_diag, -1, axis=1) - \
-        (a_diag + np.diag(np.roll(a, -1)))
-    A = -A
-    
-    b_diag = np.diag(b)
-    Bd0 = np.diag(np.roll(b, 1)) + 4*b_diag + np.diag(np.roll(b, -1))
-    Bd1 = -2 * np.roll(np.diag(np.roll(b, -1) + b), -1, axis=0)
-    Bdm1 = -2 * np.roll(np.diag(np.roll(b, 1) + b), -1, axis=1)
-    Bd2 = np.roll(np.diag(np.roll(b, -1)), -2, axis=0) 
-    Bdm2 = np.roll(np.diag(np.roll(b, 1)), 2, axis=0)
-    B = Bd0 + Bd1 + Bdm1 + Bd2 + Bdm2
-        
-    # make matrix that will be inverted
-    M_internal = gamma * np.eye(L) + (A / delta_s + B / (delta_s * delta_s))
-    inv = np.linalg.inv(M_internal)
+    inds = sorted(np.random.choice(x.shape[0],
+                                   size=int(ds_contour_rate*x.shape[0]),
+                                   replace=False))
+    x = x[inds].tolist()
+    y = y[inds].tolist()
 
-    # spline interpolation object
-    intp = RectBivariateSpline(np.arange(edge_map.shape[1]),
-                               np.arange(edge_map.shape[0]),
-                               edge_map.T, kx=2, ky=2, s=0)
+    pts = [(x, y) for x, y in zip(x, y)]
 
-    for i in range(n_iter):
-        # ----------------
-        # Get kappa values between nodes (balloon term)
-        # ----------------
+    sort_fn = lambda pt: clockwiseangle((x_c, y_c), pt)
 
-        # make snake vectors at u_(s-1), u_(s+1)
-        snake_up1 = np.concatenate((snake_u[-1:], snake_u[0:-1]), 0)
-        snake_um1 = np.concatenate([snake_u[1:], snake_u[0:1]], 0)
+    pts = sorted(pts, key=sort_fn)
 
-        # make snake vectors at v_(s-1), v_(s+1)
-        snake_vp1 = np.concatenate((snake_v[-1:], snake_v[0:-1]), 0)
-        snake_vm1 = np.concatenate([snake_v[1:], snake_v[0:1]], 0)
+    pts = np.array(pts)
+    x, y = pts[:, 0], pts[:, 1]
+    nodes = np.zeros([L, 2])
+    [tck, u] = interpolate.splprep([x, y], s=2, k=1)
+    [nodes[:, 0], nodes[:, 1]] = interpolate.splev(np.linspace(0, 1, L), tck)
 
-        # Linear interpolation on each segment of snake
-        u_interps = intp(u.ravel(), v.ravel(), dx=1, grid=False)
-        v_interps = intp(u.ravel(), v.ravel(), dy=1, grid=False)
-
-        kappa_collection = kappa[0,
-                                 u_interps.round().astype(int),
-                                 v_interps.round().astype(int)]
-
-        # Get the derivative of the balloon energy
-        s = kappa_collection.shape[0]
-        h = np.arange(1, s + 1)
-        int_ends_u_next = snake_um1 - snake_u
-        int_ends_u_prev = snake_up1 - snake_u
-        int_ends_v_next = snake_vm1 - snake_v
-        int_ends_v_prev = snake_vp1 - snake_v
-
-        # contribution from the i+1 triangles to dE/du
-        dEk_du = (int_ends_v_next / s**2).squeeze() * np.sum(
-            h * kappa_collection)
-        dEk_du += (int_ends_v_prev / s**2).squeeze() * np.sum(
-            h * kappa_collection)
-
-        # contribution from the i+1 triangles to dE/dv
-        dEk_dv = (int_ends_u_next / s**2).squeeze() * np.sum(
-            h * kappa_collection)
-        dEk_dv += (int_ends_u_prev / s**2).squeeze() * np.sum(
-            h * kappa_collection)
-
-        snake_u_new = inv @ (gamma * snake_u + u_interps)
-        snake_v_new = inv @ (gamma * snake_v + v_interps)
-
-        du = max_px_move * np.tanh(snake_u_new - snake_u)
-        dv = max_px_move * np.tanh(snake_v_new - snake_v)
-
-        snake_u += du
-        snake_v += dv
-
-        # du = -max_px_move * (
-        #     (fu - dEk_du.view(fu.shape)) * gamma).tanh() + du
-        # dv = -max_px_move * (
-        #     (fv - dEk_dv.view(fv.shape)) * gamma).tanh() + dv
-
-        # snake_u =  @ (gamma * snake_u + du)
-        # snake_v = torch.inverse(
-        #     gamma * torch.eye(L) +
-        #     (A / delta_s + B / (delta_s * delta_s))) @ (gamma * snake_v + dv)
-
-        # Movements are capped to max_px_move per iteration:
-        #snake_u += du
-        #snake_v += dv
-        snake_u = np.clip(snake_u, a_max=M - 1, a_min=0)
-        snake_v = np.clip(snake_v, a_max=N - 1, a_min=0)
-
-    return np.array((snake_u, snake_v)).T
+    return nodes

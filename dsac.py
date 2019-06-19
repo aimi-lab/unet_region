@@ -11,9 +11,13 @@ class DSAC(torch.nn.Module):
                  out_size=256,
                  num_filts=[32, 64, 128, 128, 256],
                  stack_from=0,
-                 wd=0.001,
                  E_blur=2,
-                 checkpoint_path=None,
+                 alpha_init_weight=0.,
+                 alpha_init_bias=0.015,
+                 beta_init_weight=0.,
+                 beta_init_bias=0.01,
+                 kappa_init_weight=0.,
+                 kappa_init_bias=10,
                  cuda=True):
 
         super(DSAC, self).__init__()
@@ -71,26 +75,61 @@ class DSAC(torch.nn.Module):
         self.module_energy = torch.nn.Sequential(*[
             torch.nn.Conv2d(in_channels=64, out_channels=1,
                             kernel_size=1),
+            torch.nn.Sigmoid(),
             GaussianSmoothing(1, 9, E_blur),
             torch.nn.UpsamplingBilinear2d(out_size)])
 
         # Predict alpha
+        conv1_alpha = torch.nn.Conv2d(in_channels=64, out_channels=1,
+                            kernel_size=1)
+        pool_alpha = torch.nn.AvgPool2d(out_size)
+        conv2_alpha = torch.nn.Conv2d(in_channels=1,
+                            out_channels=1,
+                            kernel_size=1,
+                            stride=1)
+        torch.nn.init.constant_(conv2_alpha.weight.data,
+                             alpha_init_weight)
+        torch.nn.init.constant_(conv2_alpha.bias.data,
+                             alpha_init_bias)
         self.module_alpha = torch.nn.Sequential(*[
-            torch.nn.Conv2d(in_channels=64, out_channels=1,
-                            kernel_size=1),
-            torch.nn.AvgPool2d(out_size),
+            conv1_alpha,
+            pool_alpha,
+            torch.nn.Sigmoid(),
+            conv2_alpha,
             torch.nn.UpsamplingNearest2d(out_size)])
 
         # Predict beta
+        conv1_beta = torch.nn.Conv2d(in_channels=64, out_channels=1,
+                            kernel_size=1)
+        conv2_beta = torch.nn.Conv2d(in_channels=1,
+                                     out_channels=1,
+                                     kernel_size=1,
+                                     stride=1)
+        torch.nn.init.constant_(conv2_beta.weight.data,
+                             beta_init_weight)
+        torch.nn.init.constant_(conv2_beta.bias.data,
+                             beta_init_bias)
         self.module_beta = torch.nn.Sequential(*[
-            torch.nn.Conv2d(in_channels=64, out_channels=1,
-                            kernel_size=1),
+            conv1_beta,
+            torch.nn.Sigmoid(),
+            conv2_beta,
             torch.nn.UpsamplingBilinear2d(out_size)])
 
         # Predict kappa
+        conv1_kappa = torch.nn.Conv2d(in_channels=64, out_channels=1,
+                                      kernel_size=1)
+        conv2_kappa = torch.nn.Conv2d(in_channels=1,
+                                     out_channels=1,
+                                     kernel_size=1,
+                                     stride=1)
+        torch.nn.init.constant_(conv2_kappa.weight.data,
+                             kappa_init_weight)
+        torch.nn.init.constant_(conv2_kappa.bias.data,
+                             kappa_init_bias)
         self.module_kappa = torch.nn.Sequential(*[
-            torch.nn.Conv2d(in_channels=64, out_channels=1,
-                            kernel_size=1),
+            conv1_kappa,
+            torch.nn.Sigmoid(),
+            conv2_kappa,
             torch.nn.UpsamplingBilinear2d(out_size)])
 
         self.to(self.device)

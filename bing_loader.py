@@ -88,23 +88,25 @@ class BingLoader(data.Dataset):
         sample['image_unnormalized'] = sample['image']
         sample['image'] = self.normalization.augment_image(sample['image'])
 
-        return {'image': img,
-                'label/nodes': nodes,
-                'label/segmentation': mask}
+        return sample
 
     @staticmethod
     def collate_fn(samples):
 
         im = np.array([np.rollaxis(s['image'], -1) for s in samples])
+        im = torch.from_numpy(im).type(torch.float)
+
+        im_unnorm = [s['image_unnormalized'] for s in samples]
+
         lbl_segm = np.array(
             [np.rollaxis(s['label/segmentation'], -1) for s in samples])
         lbl_nodes = [s['label/nodes'] for s in samples]
 
-        im = torch.from_numpy(im).type(torch.float)
         lbl_segm = torch.from_numpy(lbl_segm.astype(int)).type(torch.float)
 
         out = {
             'image': im,
+            'image_unnormalized': im_unnorm,
             'label/segmentation': lbl_segm,
             'label/nodes': lbl_nodes
         }
