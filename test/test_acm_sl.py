@@ -20,15 +20,15 @@ contour = segmentation.find_boundaries(truth, mode='thick')
 contour =  gaussian(contour, 3)
 truth = gaussian(truth, 5)
 
-gamma = 1
-alpha=0.0
-beta=10
-kappa = 0.01
+gamma = .01
+alpha=0.
+beta=0.001
+kappa = 0.0
 
 L = 20
 
 s = np.linspace(0, 2*np.pi, L)
-radius = 0.02
+radius = 0.03
 x = 142 + radius*img.shape[1]*np.cos(s)
 y = 131 + radius*img.shape[0]*np.sin(s)
 
@@ -39,11 +39,11 @@ init_snake = np.array([x, y]).T
 map_e = 1 * contour[np.newaxis, np.newaxis, ...]
 map_a = alpha * np.ones(map_e.shape)
 map_b = beta * np.ones(map_e.shape)
-map_k = kappa * (1 - contour)[np.newaxis, np.newaxis, ...]
+# map_k = kappa * (1 - contour)[np.newaxis, np.newaxis, ...] + 0.01
 # map_k = kappa * truth[np.newaxis, np.newaxis, ...]
-# map_k = kappa * np.ones(map_e.shape)
+map_k = kappa * np.ones(map_e.shape)
 max_px_move = 1
-niter = 50
+niter = 5000
 
 delta_s = np.max(map_e.shape) / L
 

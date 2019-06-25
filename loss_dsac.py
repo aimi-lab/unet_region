@@ -9,7 +9,6 @@ from scipy import interpolate
 from skimage import draw
 from PIL import Image, ImageDraw, ImageMath
 
-
 class LossDSAC(torch.nn.Module):
     def __init__(self):
         super(LossDSAC, self).__init__()

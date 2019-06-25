@@ -4,7 +4,6 @@ import numpy as np
 import math
 from torch.nn import functional as F
 
-
 class DSAC(torch.nn.Module):
     def __init__(self,
                  in_channels=3,
