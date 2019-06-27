@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 
 
 class LearningLoader(data.Dataset):
-    """Data loader that deals with augmentation 
+    """
+    Data loader that deals with augmentation 
     """
 
     def __init__(self, loader, augmentations=None, normalization=None):
@@ -26,12 +27,8 @@ class LearningLoader(data.Dataset):
 
         sample = self.loader[index]
 
-        import pdb; pdb.set_trace()
-        # plt.imshow(sample['image']);plt.scatter(sample['label/nodes'][:, 1], sample['label/nodes'][:, 0]);plt.show()
-
         # do image augmentations
         if (self.augmentations is not None):
-            orig_shape = sample['image'].shape
             aug_det = self.augmentations.to_deterministic()
             sample['image'] = aug_det.augment_image(sample['image'])
 
@@ -41,15 +38,6 @@ class LearningLoader(data.Dataset):
             truth = aug_det.augment_segmentation_maps(
                 [truth])[0].get_arr_int()[..., np.newaxis]
             sample['label/segmentation'] = truth
-
-            if ('label/nodes' in sample.keys()):
-                kp = sample['label/nodes']
-                kp = KeypointsOnImage([Keypoint(x=r[1],
-                                                y=r[0]-orig_shape[0])
-                                       for r in kp],
-                                      shape=orig_shape)
-                sample['label/nodes'] = aug_det.augment_keypoints(
-                    kp).to_xy_array()
 
         # do image normalization
         sample['image_unnormalized'] = sample['image']

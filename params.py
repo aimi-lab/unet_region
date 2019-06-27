@@ -10,7 +10,8 @@ def get_params():
     p.add('--data-type')
     p.add('--frames', action='append', type=int)
     p.add('--n-patches', type=int)
-    p.add('--epochs', type=int)
+    p.add('--epochs-ls', type=int)
+    p.add('--lr-decay', type=float)
     p.add('--lr', type=float)
     p.add('--momentum', type=float)
     p.add('--alpha', type=float)
@@ -39,19 +40,7 @@ def get_params():
     p.add('--fix-radius', type=float)
 
     p.add('--init-radius', type=float)
-    p.add('--length-snake', type=int)
-
-    p.add('--gamma', type=float)
-    p.add('--max-px-move', type=int)
-    p.add('--delta-s', type=int)
-    p.add('--n-iter', type=int)
-    p.add('--sigma', type=float)
-    p.add('--alpha-init-weight', type=float)
-    p.add('--alpha-init-bias', type=float)
-    p.add('--beta-init-weight', type=float)
-    p.add('--beta-init-bias', type=float)
-    p.add('--kappa-init-weight', type=float)
-    p.add('--kappa-init-bias', type=float)
+    p.add('--tsdf-thr', type=int)
 
 
     return p

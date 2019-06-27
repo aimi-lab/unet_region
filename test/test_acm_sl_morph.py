@@ -18,18 +18,21 @@ from scipy import ndimage
 root_dir = '/home/ubelix/medical-labeling'
 
 out_size = 256
+
 # img = io.imread(pjoin(root_dir, 'Dataset20/input-frames/frame_0030.png'))
 # truth = io.imread(
 #     pjoin(root_dir, 'Dataset20/ground_truth-frames/frame_0030.png'))
 # p_x, p_y = 143, 132
-# img = io.imread(pjoin(root_dir, 'Dataset01/input-frames/frame_0150.png'))
-# truth = (io.imread(
-#     pjoin(root_dir, 'Dataset01/ground_truth-frames/frame_0150.png'))[..., 0] > 0).astype(float)
-# p_x, p_y = 190, 100
-img = io.imread(pjoin(root_dir, 'Dataset30/input-frames/frame_0075.png'))[..., :3]
+
+img = io.imread(pjoin(root_dir, 'Dataset01/input-frames/frame_0150.png'))
 truth = (io.imread(
-    pjoin(root_dir, 'Dataset30/ground_truth-frames/frame_0075.png'))[..., 0] > 0).astype(float)
-p_x, p_y = 150, 110
+    pjoin(root_dir, 'Dataset01/ground_truth-frames/frame_0150.png'))[..., 0] > 0).astype(float)
+p_x, p_y = 190, 100
+
+# img = io.imread(pjoin(root_dir, 'Dataset30/input-frames/frame_0075.png'))[..., :3]
+# truth = (io.imread(
+#     pjoin(root_dir, 'Dataset30/ground_truth-frames/frame_0075.png'))[..., 0] > 0).astype(float)
+# p_x, p_y = 150, 110
 
 img = resize(img, (out_size, out_size))
 img_gray = color.rgb2gray(img)
@@ -70,7 +73,7 @@ smoothing = 2
 
 # make initial level set
 std = 5
-cone = make_init_ls(p_x, p_y, (out_size, out_size), 10)
+cone = make_init_ls_gaussian(p_x, p_y, (out_size, out_size), 1)
 # init_ls = np.random.normal(scale=1, size=sdf.shape) + sdf
 # init_ls[cone != 0] = cone[cone != 0]
 init_ls = cone
@@ -78,14 +81,9 @@ init_ls = cone
 init_ls_contour = segmentation.find_boundaries(init_ls > 0)
 
 start = time.time()
-phi = acm_ls(init_ls, V, 1, max_iter)
-# segm = segmentation.morphological_geodesic_active_contour(
-#     input,
-#     max_iter,
-#     init_level_set=init_ls,
-#     smoothing=smoothing,
-#     threshold=thr,
-#     balloon=balloon)
+phi = acm_ls(init_ls, V, 0.8, 1, max_iter,
+             lambda_=1, mu=0.04)
+
 end = time.time()
 
 print('n_iter: {}, time: {}s'.format(max_iter, end - start))
@@ -113,7 +111,7 @@ ax[0].legend(handles=patches,
 ax[1].imshow(init_ls)
 ax[1].set_title('init_ls')
 ax[2].imshow(V)
-ax[2].set_title('input')
-ax[3].imshow(segm_contour)
-ax[3].set_title('segm')
+ax[2].set_title('V')
+ax[3].imshow(phi[-1])
+ax[3].set_title('phi')
 fig.show()

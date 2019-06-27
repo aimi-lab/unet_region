@@ -1,7 +1,6 @@
 import munch
 import logging
 import pytorch_utils.utils as utls
-import dsac_utils as dutls
 from tensorboardX import SummaryWriter
 from torchvision import utils as tutls
 import torch
@@ -24,7 +23,7 @@ class Trainer:
         self.device = torch.device('cuda' if self.cfg.cuda else 'cpu')
 
         # self.criterion = torch.nn.BCEWithLogitsLoss()
-        self.criterion = LossDSAC()
+        self.criterion_ls = torch.nn.MSELoss()
 
         utls.setup_logging(run_dir)
         self.logger = logging.getLogger('coord_net')
@@ -48,14 +47,19 @@ class Trainer:
             eps=self.cfg.eps,
             weight_decay=self.cfg.weight_decay)
 
-    def train(self):
+        self.lr_scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,
+                                                             0.3/20)
+
 
         self.logger.info('run_dir: {}'.format(self.run_dir))
 
-        best_iou = 0.
-        for epoch in range(self.cfg.epochs):
+    def train_level_set(self):
 
-            self.logger.info('Epoch {}/{}'.format(epoch + 1, self.cfg.epochs))
+        best_loss = 0.
+        for epoch in range(self.cfg.epochs_ls):
+
+            self.logger.info('Epoch {}/{}'.format(epoch + 1,
+                                                  self.cfg.epochs_ls))
 
             # Each epoch has a training and validation phase
             for phase in self.dataloaders.keys():
@@ -64,9 +68,7 @@ class Trainer:
                 else:
                     self.model.eval()  # Set model to evaluate mode
 
-                running_iou = 0.0
-                running_inter = 0.0
-                running_union = 0.0
+                running_loss = 0.0
 
                 if (phase in ['train', 'val']):
                     # Iterate over data.
@@ -75,64 +77,45 @@ class Trainer:
                     for i, data in enumerate(self.dataloaders[phase]):
                         data = self.batch_to_device(data)
 
+                        import pdb; pdb.set_trace() ## DEBUG ##
                         # zero the parameter gradients
                         self.optimizer.zero_grad()
 
                         # forward
                         # track history if only in train
                         with torch.set_grad_enabled(phase == 'train'):
-                            out = forward_and_infer(
-                                self.model, self.cfg.in_shape,
-                                self.cfg.init_radius, self.cfg.length_snake,
-                                self.cfg.gamma, self.cfg.max_px_move,
-                                self.cfg.n_iter, data)
+                            _, _, out = self.model(data['image'])
 
-                            loss_data, gradients = self.criterion(
-                                out['edges'], out['alpha'], out['beta'],
-                                out['kappa'], out['snakes'],
-                                data['label/segmentation'],
-                                data['label/nodes'])
+                            loss = self.criterion_ls(out,
+                                                     data['label/tsdf'])
 
                             # backward + optimize only if in training phase
                             if phase == 'train':
-                                out['edges'].backward(
-                                    gradients['edges'], retain_graph=True)
-                                out['alpha'].backward(
-                                    gradients['alpha'], retain_graph=True)
-                                out['beta'].backward(
-                                    gradients['beta'], retain_graph=True)
-                                out['kappa'].backward(gradients['kappa'])
+                                loss.backward()
                                 self.optimizer.step()
+                                self.lr_scheduler.step()
 
-                        running_iou += np.mean(loss_data['iou'])
-                        running_inter += np.mean(loss_data['intersection'])
-                        running_union += np.mean(loss_data['union'])
-                        iou_ = running_iou / ((i + 1) * self.cfg.batch_size)
-                        inter_ = running_inter / (
-                            (i + 1) * self.cfg.batch_size)
-                        union_ = running_union / (
-                            (i + 1) * self.cfg.batch_size)
+                        running_loss += loss
+                        loss_ = running_loss / ((i + 1) * self.cfg.batch_size)
                         pbar.set_description(
-                            '[{}] : iou {:.4f}, inter {:.4f}, union {:.4f}'.format(
-                                phase, iou_, inter_, union_))
+                            '[{}] : mse {:.4f}'.format(
+                                phase, loss_))
                         pbar.update(1)
                         samp_ += 1
+                        self.writer.add_scalar('{}/lr_ls'.format(phase),
+                                            self.lr_scheduler.get_lr(),
+                                            epoch)
 
                     pbar.close()
-                    self.writer.add_scalar('{}/iou'.format(phase), iou_, epoch)
-                    self.writer.add_scalar('{}/inter'.format(phase), inter_,
-                                           epoch)
-                    self.writer.add_scalar('{}/union'.format(phase), union_,
+                    self.writer.add_scalar('{}/mse_ls'.format(phase),
+                                           loss_,
                                            epoch)
 
                 # make preview images
                 if phase == 'prev':
                     data = next(iter(self.dataloaders[phase]))
                     data = self.batch_to_device(data)
-                    out = forward_and_infer(
-                        self.model, self.cfg.in_shape, self.cfg.init_radius,
-                        self.cfg.length_snake, self.cfg.gamma,
-                        self.cfg.max_px_move, self.cfg.n_iter, data)
+                    _, _, out = self.model(data['image'])
 
                     img = make_preview_grid(data, out)
                     self.writer.add_image('test/img',
@@ -142,74 +125,22 @@ class Trainer:
                 # save checkpoint
                 if phase == 'val':
                     is_best = False
-                    if (iou_ < best_iou):
+                    if (loss_ < best_loss):
                         is_best = True
-                        best_iou = iou_
+                        best_loss = loss_
                     path = pjoin(self.run_dir, 'checkpoints')
                     utls.save_checkpoint(
                         {
                             'epoch': epoch + 1,
                             'state_dict': self.model.state_dict(),
-                            'best_iou': best_iou,
+                            'best_iou': best_loss,
                             'optimizer': self.optimizer.state_dict()
                         },
                         is_best,
-                        path=path)
+                        path=path,
+                        fname_cp='checkpoint_ls.pth.tar',
+                        fname_bm='best_model_ls.pth.tar')
 
-
-def forward_and_infer(model, in_shape, init_radius, length_snake, gamma,
-                      max_px_move, n_iter, data, verbose=False):
-
-    edges, alpha, beta, kappa = model(data['image'])
-
-    edges_np = edges.clone().detach().cpu().numpy()
-    alpha_np = alpha.clone().detach().cpu().numpy()
-    beta_np = beta.clone().detach().cpu().numpy()
-    kappa_np = kappa.clone().detach().cpu().numpy()
-
-    # generate initial snake
-    init_snake = dutls.make_init_snake(
-        int(in_shape * init_radius), in_shape, length_snake)
-
-    # run inference on batch
-    snakes = dutls.acm_inference(edges_np, alpha_np, beta_np, kappa_np,
-                                 init_snake, gamma, max_px_move, n_iter,
-                                 verbose=verbose)
-
-    # plot_preview(data['image'].detach().cpu().numpy(),
-    #              edges_np, alpha_np, beta_np, kappa_np,
-    #              init_snake, snakes, 0)
-
-    return {
-        'edges': edges,
-        'alpha': alpha,
-        'beta': beta,
-        'kappa': kappa,
-        'snakes': snakes
-    }
-
-def plot_preview(ims, edges, alpha, beta, kappa,
-                 init_snake, snakes, n):
-
-    fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(7, 7))
-    im_ = np.moveaxis(ims[n, ...], 0, -1)
-    ax[0, 0].imshow(im_)
-    ax[0, 0].plot(init_snake[:, 0], init_snake[:, 1], '--b', lw=3)
-    ax[0, 0].plot(snakes[n][:, 0], snakes[n][:, 1], '--r', lw=3)
-    ax[0, 0].set_xticks([])
-    ax[0, 0].set_yticks([])
-
-    ax[0, 1].imshow(edges[n, 0, ...])
-    ax[0, 1].set_title('edges')
-    ax[1, 0].imshow(beta[n, 0, ...])
-    ax[1, 0].set_title('beta')
-    ax[1, 1].imshow(kappa[n, 0, ...])
-    ax[1, 1].set_title('kappa')
-    ax[2, 0].imshow(alpha[n, 0, ...])
-    ax[2, 0].set_title('alpha')
-
-    fig.show()
- 
 
 def normalize_map(a):
     a -= a.min()

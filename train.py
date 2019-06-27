@@ -16,7 +16,7 @@ from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
 import params
-from dsac import DSAC
+from delse import DELSE
 from trainer import Trainer
 
 def main(cfg):
@@ -49,14 +49,14 @@ def main(cfg):
     normalization = Normalize(mean=[0.485, 0.456, 0.406],
                               std=[0.229, 0.224, 0.225])
 
-    if cfg.data_type == 'bing':
-        loader = BingLoader(
+    if cfg.data_type == 'pascal':
+        loader = pascalVOCLoaderPatch(
             cfg.in_dir,
+            patch_rel_size=cfg.patch_rel_size,
+            tsdf_thr=cfg.tsdf_thr,
             augmentations=transf,
             normalization=normalization)
-    elif cfg.data_type == 'pascal':
-        loader = pascalVOCLoaderPatch(
-            cfg.in_dir, patch_rel_size=cfg.patch_rel_size)
+            
     elif cfg.data_type == 'medical':
         loader = PatchLoader(
             cfg.in_dir,
@@ -128,16 +128,8 @@ def main(cfg):
                    'val': val_loader,
                    'prev': prev_loader}
 
-    model = DSAC(
-        in_channels=3,
-        out_size=cfg.in_shape,
-        cuda=cfg.cuda,
-        alpha_init_bias=cfg.alpha_init_bias,
-        alpha_init_weight=cfg.alpha_init_weight,
-        beta_init_bias=cfg.beta_init_bias,
-        beta_init_weight=cfg.beta_init_weight,
-        kappa_init_bias=cfg.kappa_init_bias,
-        kappa_init_weight=cfg.kappa_init_weight)
+    model = DELSE(
+        cuda=cfg.cuda)
 
     cfg.run_dir = run_dir
 
@@ -146,29 +138,31 @@ def main(cfg):
         yaml.dump(cfg.__dict__, stream=outfile, default_flow_style=False)
 
     trainer = Trainer(model, dataloaders, cfg, run_dir)
-    trainer.train()
+
+    # train level set branch
+    trainer.train_level_set()
 
     return cfg
 
 if __name__ == "__main__":
 
     p = params.get_params()
-    p.add('--in-dir', required=True)
-    p.add('--out-dir', required=True)
-    p.add('--checkpoint-path')
+    # p.add('--in-dir', required=True)
+    # p.add('--out-dir', required=True)
+    # p.add('--checkpoint-path')
 
     cfg = p.parse_args()
 
-    # cfg.data_type = 'bing'
-    # cfg.out_dir = '/home/krakapwa/Desktop/data'
-    # cfg.in_dir = '/home/krakapwa/Desktop/data/single_buildings/'
+    cfg.in_shape = 256
+    cfg.checkpoint_path = None
+    cfg.n_workers = 0
+    cfg.data_type = 'pascal'
+    cfg.out_dir = '/home/ubelix/medical-labeling/'
+    cfg.in_dir = '/home/ubelix/medical-labeling/'
 
     # cfg.data_type = 'medical'
     # cfg.out_dir = '/home/ubelix/medical-labeling/unet_region/runs/'
     # cfg.in_dir = '/home/ubelix/medical-labeling/Dataset20'
     # cfg.frames = [30]
-    # cfg.in_shape = 256
-    # cfg.checkpoint_path = None
-    # cfg.n_workers = 0
 
     main(cfg)
