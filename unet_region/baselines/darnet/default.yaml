@@ -5,8 +5,10 @@ n-patches: 1000
 
 data-type: pascal
 
-epochs: 200
+epochs: 10
 lr-decay: 0.3
+gamma: 0.95
+patience : 50
 
 # optimizer
 lr: 0.0001
@@ -55,8 +57,9 @@ n-save-train-examples: 10
 # fixed radius masks
 fix-radius: 0.05
 
-# for DELSE
+# for snake
 init-radius: 0.02
+n-nodes: 60
 
 tsdf-thr: 30
 

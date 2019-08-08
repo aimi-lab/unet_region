@@ -6,8 +6,9 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
+from unet_region.plots.data_paths import paths
 
-root_dir = '/home/ubelix/data/medical-labeling/unet_region/runs'
+root_dir = '/home/ubelix/runs/unet_region'
 out_dir = '/home/ubelix/data/medical-labeling/unet_region'
 seq_types = ['tweezer', 'cochlea', 'slitlamp', 'brain']
 
@@ -38,24 +39,6 @@ def make_dataframe(root_dir, run_dir, dirs, fname, method):
     return pds
 
 
-paths = {
-    ('pascal_2019-05-29_08-20', 'pascal'): [
-        'Dataset00', 'Dataset01', 'Dataset02', 'Dataset03', 'Dataset04',
-        'Dataset05', 'Dataset20', 'Dataset21', 'Dataset22', 'Dataset23',
-        'Dataset24', 'Dataset25', 'Dataset10', 'Dataset11', 'Dataset12',
-        'Dataset13', 'Dataset20', 'Dataset21', 'Dataset22', 'Dataset23',
-        'Dataset24', 'Dataset25', 'Dataset30', 'Dataset31', 'Dataset32',
-        'Dataset33', 'Dataset34'
-    ],
-    ('Dataset00_2019-05-29_19-29', 'pascal_1f'): ['Dataset00', 'Dataset01', 'Dataset02',
-                                   'Dataset03', 'Dataset04', 'Dataset05'],
-    ('Dataset20_2019-05-29_21-33', 'pascal_1f'): ['Dataset20', 'Dataset21', 'Dataset22',
-                                   'Dataset23', 'Dataset24', 'Dataset25'],
-   ('Dataset30_2019-05-29_22-35', 'pascal_1f') : ['Dataset30', 'Dataset31', 'Dataset32',
-                                   'Dataset33', 'Dataset34'],
-    ('Dataset10_2019-05-29_20-31', 'pascal_1f'):
-                   ['Dataset10', 'Dataset11', 'Dataset12', 'Dataset13']
-}
 
 dfs = []
 for k, v in paths.items():
@@ -65,12 +48,11 @@ for k, v in paths.items():
 
 for k, v in paths.items():
     df = pd.concat(
-        make_dataframe(root_dir, k[0], v, 'scores_chan_vese.csv', k[1]), axis=1)
+        make_dataframe(root_dir, k[0], v, 'scores_chan_vese.csv', 'pascal_1f_cv'), axis=1)
     dfs.append(df)
 
 dfs = pd.concat(dfs, axis=1)
 
-import pdb; pdb.set_trace() ## DEBUG ##
 metrics_to_plot = ['closed/f1', 'auc']
 
 df_to_plot = pd.concat([dfs.loc[m] for m in metrics_to_plot], axis=1)
@@ -82,7 +64,7 @@ df_to_plot = df_to_plot.reset_index()
 # plt.show()
 
 sns.set_style("whitegrid")
-fig, ax = plt.subplots(len(metrics_to_plot), 1, figsize=(9, 8))
+fig, ax = plt.subplots(len(metrics_to_plot), 1, figsize=(11, 8))
 ax = ax.flatten()
 for m, a in zip(metrics_to_plot, ax):
     sns.boxplot(
@@ -95,5 +77,5 @@ for m, a in zip(metrics_to_plot, ax):
 fig.tight_layout()
 # Put the legend out of the figure
 
-fig.savefig(pjoin(out_dir, 'all.png'))
+# fig.savefig(pjoin(out_dir, 'all.png'))
 fig.show()

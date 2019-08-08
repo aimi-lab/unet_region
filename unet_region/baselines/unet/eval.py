@@ -1,14 +1,13 @@
 from os.path import join as pjoin
 import os
 import yaml
-from pytorch_utils.models.unet import UNet
-import munch
+from unet_region.models.unet import UNet
 import torch
 import pandas as pd
 import numpy as np
 from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
 from unet_region.patch_loader import PatchLoader
-from pytorch_utils import utils as utls
+from unet_region import utils as utls
 import matplotlib.pyplot as plt
 import tqdm
 from skimage import segmentation, draw, io, transform
@@ -21,6 +20,20 @@ import params
 import numpy as np
 from collections import defaultdict
 
+def get_closest_label(label_map):
+    # take label that is the closest to center
+    w, h = label_map.shape
+    x, y = np.meshgrid(np.arange(-w // 2, w // 2),
+                       np.arange(-h // 2, h // 2))
+    dist = np.linalg.norm(np.stack((x, y)), axis=0)
+
+    dist_label = np.stack((label_map.ravel(), dist.ravel())).T
+    dist_label = dist_label[dist_label[:, 0] != 0, :]
+    if(dist_label.size == 0):
+        return None
+
+    dist_label = dist_label[np.argsort(dist_label[:, 1]), :]
+    return dist_label[0, 0]
 
 def main(cfg):
 
@@ -31,7 +44,7 @@ def main(cfg):
     else:
         frames_of_train = None
 
-    cp_path = pjoin(cfg.run_dir, 'checkpoints', 'best_model.pth.tar')
+    cp_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint.pth.tar')
 
     ds_dir = os.path.split(cfg.in_dir)[1]
 
@@ -60,40 +73,9 @@ def main(cfg):
         with_coordconv_r=cfg.coordconv_r,
         with_batchnorm=cfg.batch_norm)
 
-    model.load_state_dict(cp['state_dict'])
-    model.eval()
-
-    # Find threhsold on validation set
-    if train_cfg['data_type'] == 'medical':
-        in_dir_of_train = train_cfg['in_dir']
-
-        val_patch_loader = PatchLoader(
-            in_dir_of_train,
-            truth_type='hand',
-            fix_frames=frames_of_train,
-            fake_len=100,
-            augmentation=transf,
-            patch_rel_size=cfg.patch_rel_size)
-
-        val_loader = torch.utils.data.DataLoader(
-            val_patch_loader,
-            batch_size=cfg.batch_size,
-            num_workers=cfg.n_workers,
-            collate_fn=val_patch_loader.collate_fn)
-    else:
-        val_patch_loader = pascalVOCLoaderPatch(
-            pjoin(cfg.root_dir, 'VOC2012'),
-            augmentations=transf,
-            patch_rel_size=cfg.patch_rel_size)
-
-        # pick random images
-        inds = np.random.choice(np.arange(len(val_patch_loader)), 100)
-        val_loader = torch.utils.data.DataLoader(
-            val_patch_loader,
-            batch_size=cfg.batch_size,
-            num_workers=0,
-            sampler=torch.utils.data.SubsetRandomSampler(inds.tolist()),
-            collate_fn=val_patch_loader.collate_fn)
+    model.load_state_dict(cp)
+        
+    model = model.eval()
 
     pred_patch_loader = PatchLoader(
         cfg.in_dir,
@@ -125,7 +107,7 @@ def main(cfg):
     pbar = tqdm.tqdm(total=len(pred_loader))
     for i, data in enumerate(pred_loader):
         data = batch_to_device(data)
-        pred_ = torch.sigmoid(model(data['image'])).detach().cpu().numpy()
+        pred_ = model(data['image']).detach().cpu().numpy()
         im_ = data['image'].cpu().numpy().transpose((0, 2, 3, 1))
         truth_ = data['label/segmentation'].cpu().numpy().transpose((0, 2, 3,
                                                                      1))
@@ -211,16 +193,19 @@ def main(cfg):
 
     for i in range(len(ims)):
         pred_mask_ = preds_mask[i]
-
         box = boxes[i]
 
         # make masks
         ell_mask = opt_boxes[i].resize(box.shape).get_ellipse_mask()
         closed_mask = label(pred_mask_)
-        closed_mask = closed_mask == closed_mask[closed_mask.shape[0] //
-                                                 2, closed_mask.shape[1] // 2]
-        closed_mask = transform.resize(
-            closed_mask, box.shape, mode='reflect').astype(bool)
+
+        closest_label = get_closest_label(closed_mask)
+        if(closest_label is not None):
+            closed_mask = (closed_mask == closest_label).astype(float)
+            closed_mask = transform.resize(
+                closed_mask, box.shape, mode='reflect').astype(bool)
+        else:
+            closed_mask = np.zeros(box.shape).astype(bool)
 
         radius_mask = np.zeros(box.shape, dtype=bool)
         rr, cc = draw.circle(

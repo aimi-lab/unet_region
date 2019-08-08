@@ -12,22 +12,6 @@ import matplotlib.pyplot as plt
 import tqdm
 from sklearn.metrics import f1_score, roc_curve, auc
 
-dirs = {
-    'Dataset00_2019-05-29_19-29': [
-        'Dataset04', 'Dataset01', 'Dataset02', 'Dataset00', 'Dataset03',
-        'Dataset05'
-    ],
-    'Dataset10_2019-05-29_20-31':
-    ['Dataset10', 'Dataset11', 'Dataset12', 'Dataset13'],
-    'Dataset20_2019-05-29_21-33': [
-        'Dataset20', 'Dataset21', 'Dataset22', 'Dataset23', 'Dataset24',
-        'Dataset25'
-    ],
-    'Dataset30_2019-05-29_22-35':
-    ['Dataset30', 'Dataset31', 'Dataset32', 'Dataset33', 'Dataset34']
-}
-
-
 def run_chan_vese(f_names, radius):
     pbar = tqdm.tqdm(total=len(f_names))
     maps = []
@@ -47,55 +31,47 @@ def run_chan_vese(f_names, radius):
 
 def main(cfg):
 
-    for run_dir in dirs.keys():
-        for s in dirs[run_dir]:
-            exp_path = pjoin(cfg.root_dir, run_dir, s)
-            print('Running Chan-Vese using predictions of {}'.format(exp_path))
-            frames = sorted(
-                glob.glob(
-                    pjoin(exp_path, 'preds_map', '*.png')))
+    print('Running Chan-Vese using predictions of {}'.format(cfg.preds_dir))
+    frames = sorted(
+        glob.glob(
+            pjoin(cfg.preds_dir, 'preds_map', '*.png')))
 
-            truths = sorted(
-                glob.glob(pjoin(cfg.root_dir, run_dir, s, 'truths', '*.png')))
+    truths = sorted(
+        glob.glob(pjoin(cfg.preds_dir, 'truths', '*.png')))
 
-            truths = np.array([io.imread(f) for f in truths]).astype(bool)
-            maps = np.array(run_chan_vese(frames, 0.05)).astype(int)
+    truths = np.array([io.imread(f) for f in truths]).astype(bool)
+    maps = np.array(run_chan_vese(frames, 0.05)).astype(int)
 
-            out_dir = pjoin(cfg.root_dir, run_dir, s, 'chan_vese_maps')
+    out_dir = pjoin(cfg.preds_dir, 'chan_vese_maps')
 
-            if (not os.path.exists(out_dir)):
-                os.makedirs(out_dir)
+    if (not os.path.exists(out_dir)):
+        os.makedirs(out_dir)
 
-            # save chan-vese maps
-            for i, m in enumerate(maps):
-                io.imsave(pjoin(out_dir, 'frame_{:04d}.png'.format(i)), m)
+    # save chan-vese maps
+    for i, m in enumerate(maps):
+        io.imsave(pjoin(out_dir, 'frame_{:04d}.png'.format(i)), m)
 
-            # compute scores
-            fpr, tpr, thresholds = roc_curve(truths.ravel(), maps.ravel())
-            f1 = f1_score(truths.ravel(), maps.ravel())
-            auc_ = auc(fpr, tpr)
+    # compute scores
+    fpr, tpr, thresholds = roc_curve(truths.ravel(), maps.ravel())
+    f1 = f1_score(truths.ravel(), maps.ravel())
+    auc_ = auc(fpr, tpr)
 
-            path_scores = pjoin(cfg.root_dir,
-                                run_dir,
-                                s,
-                                'scores_chan_vese.csv')
+    path_scores = pjoin(cfg.preds_dir,
+                        'scores_chan_vese.csv')
 
-            dict_scores = {'closed/fpr': fpr[1],
-                           'closed/tpr': tpr[1],
-                           'closed/f1': f1,
-                           'auc': auc_}
-            scores = pd.Series(dict_scores)
-            print('saving scores to {}'.format(path_scores))
-            scores.to_csv(path_scores)
+    dict_scores = {'closed/fpr': fpr[1],
+                   'closed/tpr': tpr[1],
+                   'closed/f1': f1,
+                   'auc': auc_}
+    scores = pd.Series(dict_scores)
+    print('saving scores to {}'.format(path_scores))
+    scores.to_csv(path_scores)
 
 
 if __name__ == "__main__":
 
     p = params.get_params()
-    p.add('--root-dir')
+    p.add('--preds-dir')
     cfg = p.parse_args()
-    cfg.n_workers = 0
 
-    cfg.root_dir = '/home/ubelix/data/medical-labeling/unet_region/runs'
-
-    main(cfg)
+    chan_vese(cfg)

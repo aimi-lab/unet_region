@@ -41,14 +41,16 @@ class Trainer:
         if (cfg.checkpoint_path is not None):
             self.logger.info('Loading checkpoint: {}'.format(
                 cfg.checkpoint_path))
-            checkpoint = torch.load(cfg.checkpoint_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
+            checkpoint = torch.load(cfg.checkpoint_path, map_location='cpu')
+            self.model.load_state_dict(checkpoint)
 
         self.optimizer = optim.SGD(
             model.parameters(),
             momentum=self.cfg.momentum,
             lr=self.cfg.lr,
             weight_decay=self.cfg.weight_decay)
+
+        self.model = self.model.to(self.device)
 
     def train(self):
 

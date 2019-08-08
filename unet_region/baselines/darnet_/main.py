@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 from skimage.transform import resize
 from skimage import io, draw, segmentation, color
 import test
-import unet_region.baselines.darnet.utils as utls
+import unet_region.baselines.darnet_.utils as utls
 from scipy.ndimage import distance_transform_edt
 import copy
 
 
-root_dir = '/home/ubelix/data/medical-labeling'
+root_dir = '/home/ubelix/data/data/medical-labeling'
 
 out_size = 256
 
@@ -19,9 +19,9 @@ out_size = 256
 #     pjoin(root_dir, 'Dataset20/ground_truth-frames/frame_0030.png'))
 # p_x, p_y = 143, 132
 
-img = io.imread(pjoin(root_dir, 'Dataset01/input-frames/frame_0150.png'))
+img = io.imread(pjoin(root_dir, 'Dataset00/input-frames/frame_0400.png'))
 truth = (io.imread(
-    pjoin(root_dir, 'Dataset01/ground_truth-frames/frame_0150.png'))[..., 0] > 0).astype(float)
+    pjoin(root_dir, 'Dataset00/ground_truth-frames/frame_0400.png'))[..., 0] > 0).astype(float)
 p_x, p_y = 180, 100
 
 # img = io.imread(pjoin(root_dir, 'Dataset30/input-frames/frame_0075.png'))[..., :3]

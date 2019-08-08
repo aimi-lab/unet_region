@@ -4,14 +4,70 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
+import matplotlib.pyplot as plt
 
-from dar_package.models import drn
-from dar_package.models.drn import BasicBlock
+from unet_region.baselines.darnet.models import drn
+from unet_region.baselines.darnet.models.drn import BasicBlock
+from unet_region.baselines.darnet.models import coordconv
 
+def make_addcoords(in_channels, with_coordconv, with_r):
+    # simple helper to generate coordconv
+    
+    addcoords = None
+    if(with_coordconv):
+        in_channels += 2
+        if(with_r):
+            in_channels += 1
+            addcoords = coordconv.AddCoords(with_r=True)
+        else:
+            addcoords = coordconv.AddCoords(with_r=False)
+    return addcoords, in_channels
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_planes,
+                 out_planes,
+                 dilation,
+                 with_coordconv=False,
+                 with_coordconv_r=False):
+        super(ConvBlock, self).__init__()
+
+        self.in_planes = in_planes
+        self.out_planes = out_planes
+
+        self.addcoords, self.in_planes = make_addcoords(self.in_planes,
+                                                       with_coordconv,
+                                                       with_coordconv_r)
+
+        self.downsample = nn.Sequential(
+            nn.Conv2d(
+                self.in_planes, self.out_planes,
+                kernel_size=1,
+                stride=1,
+                bias=False),
+            nn.BatchNorm2d(out_planes))
+        self.convblock = BasicBlock(
+            self.in_planes,
+            self.out_planes,
+            dilation=(dilation, dilation),
+            downsample=self.downsample)
+
+    def forward(self, x):
+
+        if(self.addcoords is not None):
+            x = self.addcoords(x)
+
+        x = self.convblock(x)
+        return x
 
 class UpConvBlock(nn.Module):
-    def __init__(self, inplanes, planes):
+    def __init__(self, inplanes, planes,
+                 with_coordconv=False,
+                 with_coordconv_r=False):
         super(UpConvBlock, self).__init__()
+
+        self.inplanes = inplanes
+
         self.upconv1 = nn.ConvTranspose2d(
             inplanes,
             planes,
@@ -29,9 +85,15 @@ class UpConvBlock(nn.Module):
             nn.ConvTranspose2d(
                 inplanes, planes, 4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(planes))
+        self.addcoords, self.inplanes = make_addcoords(self.inplanes,
+                                                       with_coordconv,
+                                                       with_coordconv_r)
 
     def forward(self, x):
         residual = x
+
+        if(self.addcoords is not None):
+            x = self.addcoords(x)
 
         x = self.upconv1(x)
         x = self.bn1(x)
@@ -46,15 +108,27 @@ class UpConvBlock(nn.Module):
 
 
 class DRNContours(nn.Module):
-    def __init__(self, model_name='drn_d_22', classes=3, pretrained=True):
+    def __init__(self,
+                 model_name='drn_d_22',
+                 classes=3,
+                 pretrained=True,
+                 with_coordconv=False,
+                 with_coordconv_r=False):
         super(DRNContours, self).__init__()
+
+        self.with_coordconv = with_coordconv
+        self.with_coordconv_r = with_coordconv_r
+
         model = drn.__dict__.get(model_name)(
             pretrained=pretrained, num_classes=1000)
         self.base = nn.Sequential(*list(model.children())[:-2])
 
-        self.upconv1 = UpConvBlock(model.out_dim, model.out_dim // 2)
-        self.upconv2 = UpConvBlock(model.out_dim // 2, model.out_dim // 4)
-        self.upconv3 = UpConvBlock(model.out_dim // 4, model.out_dim // 8)
+        self.upconv1 = UpConvBlock(model.out_dim, model.out_dim // 2,
+                                   with_coordconv, with_coordconv_r)
+        self.upconv2 = UpConvBlock(model.out_dim // 2, model.out_dim // 4,
+                                   with_coordconv, with_coordconv_r)
+        self.upconv3 = UpConvBlock(model.out_dim // 4, model.out_dim // 8,
+                                   with_coordconv, with_coordconv_r)
         self.predict_1 = nn.Conv2d(
             model.out_dim // 8,
             classes,
@@ -64,12 +138,18 @@ class DRNContours(nn.Module):
             bias=True)
 
         # Combine predictions with output of upconv 3 to further refine
-        self.conv4 = self._create_convblock(model.out_dim // 8 + classes,
-                                            model.out_dim // 16, 1)
-        self.conv5 = self._create_convblock(model.out_dim // 16,
-                                            model.out_dim // 32, 2)
-        self.conv6 = self._create_convblock(model.out_dim // 32,
-                                            model.out_dim // 32, 1)
+        self.conv4 = ConvBlock(model.out_dim // 8 + classes,
+                               model.out_dim // 16,
+                               1,
+                               with_coordconv, with_coordconv_r)
+        self.conv5 = ConvBlock(model.out_dim // 16,
+                               model.out_dim // 32,
+                               2,
+                               with_coordconv, with_coordconv_r)
+        self.conv6 = ConvBlock(model.out_dim // 32,
+                               model.out_dim // 32,
+                               1,
+                               with_coordconv, with_coordconv_r)
         self.predict_2 = nn.Conv2d(
             model.out_dim // 32,
             classes,
@@ -104,6 +184,7 @@ class DRNContours(nn.Module):
 
     def forward(self, x):
         x = self.base(x)
+        import pdb; pdb.set_trace() ## DEBUG ##
         x = self.upconv1(x)
         x = self.upconv2(x)
         x = self.upconv3(x)

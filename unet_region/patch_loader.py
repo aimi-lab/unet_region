@@ -14,6 +14,7 @@ from os.path import join as pjoin
 from PIL import Image
 import pandas as pd
 from scipy import interpolate
+from scipy.ndimage import distance_transform_edt
 
 
 class PatchLoader(Loader, data.Dataset):
@@ -24,48 +25,26 @@ class PatchLoader(Loader, data.Dataset):
                  fix_frames=None,
                  locs=None,
                  fake_len=None,
-                 do_reshape=False,
                  augmentation=None,
-                 make_opt_box=False,
-                 make_snake=False,
-                 make_edt=False,
-                 tsdf_thr=False,
-                 length_snake=30,
-                 img_norm=True,
+                 normalization=None,
+                 late_fn=None,
                  patch_rel_size=0.3,
                  cuda=False):
 
         Loader.__init__(self, root_path, truth_type, ksp_pm_thr, fix_frames)
         self.locs = locs
 
-        self.to_collate_keys = ['image',
-                                'label/segmentation']
-
-        self.make_edt = make_edt
-        self.tsdf_thr = tsdf_thr
-
-        if(tsdf_thr is not None):
-            self.to_collate_keys.append('label/tsdf')
-            self.to_collate_keys.append('phi_tilda')
-            self.to_collate_keys.append('label/U')
-
-        if(make_edt is not None):
-            self.to_collate_keys.append('label/edt_D')
-            self.to_collate_keys.append('label/edt_beta')
-            self.to_collate_keys.append('label/edt_kappa')
+        self.late_fn = late_fn
 
         # when no locs are given, generate random locs
         self.fake_len = fake_len
 
-        self.img_norm = img_norm
         self.augmentation = augmentation
+        self.normalization = normalization
 
         self.patch_rel_size = patch_rel_size
-        self._do_reshape = do_reshape
-        self.make_opt_box = make_opt_box
 
-        self.make_snake = make_snake
-        self.length_snake = length_snake
+        self.ignore_collate = ['image_unnormalized', 'box', 'rel_size', 'loc', 'idx']
 
         self.device = torch.device('cuda' if cuda else 'cpu')
 
@@ -89,7 +68,6 @@ class PatchLoader(Loader, data.Dataset):
         else:
             sample = Loader.__getitem__(self,
                                         self.locs['frame'][index])
-            
 
         truth = sample['label/segmentation']
         im = sample['image']
@@ -131,6 +109,7 @@ class PatchLoader(Loader, data.Dataset):
                 [truth])[0].get_arr_int()[..., np.newaxis]
 
         out = {
+            'image_unnormalized': im,
             'image': im,
             'idx': index,
             'box': box,
@@ -139,23 +118,11 @@ class PatchLoader(Loader, data.Dataset):
             'loc': loc
         }
 
-        if (self.make_opt_box):
-            opt_box = get_opt_box(truth > 0)
-            out['label/opt_box'] = opt_box['box']
-        else:
-            out['label/opt_box'] = None
+        if(self.normalization is not None):
+            out['image'] = self.normalization.augment_image(im)
 
-        if (self.make_snake):
-            nodes = make_spline_contour(truth[..., 0],
-                                        self.length_snake,
-                                        2,
-                                        1,
-                                        1,
-                                        0.1)
-            out['label/nodes'] = nodes
-        else:
-            out['label/opt_box'] = None
-            
+        if(self.late_fn is not None):
+            out = self.late_fn(out)
 
         return out
 
@@ -163,9 +130,9 @@ class PatchLoader(Loader, data.Dataset):
         out = {k: [dic[k] for dic in samples] for k in samples[0]}
 
         for k in out.keys():
-            if(k in self.to_collate_keys):
+            if(k not in self.ignore_collate):
                 out[k] = np.array(out[k])
-                out[k] = out[k].transpose((0, -1, 1, 2))
+                out[k] = np.rollaxis(out[k], -1, 1)
                 out[k] = torch.from_numpy(out[k]).float()
 
         return out
@@ -199,5 +166,3 @@ def extract_patch(arr, patch_width, loc):
             patch.shape, patch_width))
 
     return patch
-
-

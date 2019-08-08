@@ -10,7 +10,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 import importlib
-import dar_package.config
+import unet_region.baselines.darnet.config
 
 
 class AverageMeter(object):

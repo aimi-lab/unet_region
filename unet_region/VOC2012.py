@@ -25,6 +25,7 @@ class VOC2012(Dataset):
     def __init__(self,
                  root_path='./VOC2012/',
                  aug_path='SegmentationClassAug/',
+                 image_size=(224, 224),
                  load_h5=True,
                  checkpaths=False):
         '''
@@ -42,11 +43,13 @@ class VOC2012(Dataset):
         if root_path[len(root_path) - 1] != '/' and root_path[len(root_path) -
                                                               1] != '\\':
             self.root_path += '/'
-        self.train_list_path = self.root_path + 'ImageSets/Segmentation/train.txt'
-        self.val_list_path = self.root_path + 'ImageSets/Segmentation/val.txt'
-        self.image_path = self.root_path + 'JPEGImages/'
-        self.label_path = self.root_path + 'SegmentationClass/'
-        self.aug_path = os.path.join(self.root_path, aug_path)
+
+        self.image_size = image_size
+        self.train_list_path = self.root_path + 'VOC2012/ImageSets/Segmentation/train.txt'
+        self.val_list_path = self.root_path + 'VOC2012/ImageSets/Segmentation/val.txt'
+        self.image_path = self.root_path + 'VOC2012/JPEGImages/'
+        self.label_path = self.root_path + 'VOC2012/SegmentationClass/'
+        self.aug_path = os.path.join(self.root_path, 'VOC2012', aug_path)
         if aug_path[len(aug_path) - 1] != '/' and aug_path[len(aug_path) -
                                                            1] != '\\':
             self.aug_path += '/'
@@ -138,6 +141,8 @@ class VOC2012(Dataset):
             self.read_train_list()
         for filename in self.train_list:
             image = cv2.imread(self.image_path + filename + '.jpg')
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = cv2.resize(image, self.image_size, interpolation=cv2.INTER_NEAREST)
             self.train_images.append(image)
             if len(self.train_images) % 100 == 0:
                 print('Reading train images', len(self.train_images), '/',
@@ -158,7 +163,8 @@ class VOC2012(Dataset):
             image = Image.open(self.label_path + filename + '.png')
             image = np.array(image)
             image[image > 20] = 0
-            image[image > 20] = 0
+            image = cv2.resize(image, self.image_size, interpolation=cv2.INTER_NEAREST)
+
             self.train_labels.append(image)
             if len(self.train_labels) % 100 == 0:
                 print('Reading train labels', len(self.train_labels), '/',
@@ -175,6 +181,8 @@ class VOC2012(Dataset):
             self.read_val_list()
         for filename in self.val_list:
             image = cv2.imread(self.image_path + filename + '.jpg')
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = cv2.resize(image, self.image_size)
             self.val_images.append(image)
             if len(self.val_images) % 100 == 0:
                 print('Reading val images', len(self.val_images), '/',
@@ -194,7 +202,7 @@ class VOC2012(Dataset):
         for filename in self.val_list:
             image = Image.open(self.label_path + filename + '.png')
             image = np.array(image)
-            image[image > 20] = 0
+            image = cv2.resize(image, self.image_size)
             image[image > 20] = 0
             self.val_labels.append(image)
             if len(self.val_labels) % 100 == 0:
@@ -240,11 +248,14 @@ class VOC2012(Dataset):
             label = cv2.imread(self.aug_path + label_filename,
                                cv2.IMREAD_GRAYSCALE)
             label[label > 20] = 0
-            label[label > 20] = 0
+            label = cv2.resize(label, self.image_size, interpolation=cv2.INTER_NEAREST)
+
             self.aug_labels.append(label)
             # read image
             image_filename = label_filename.replace('.png', '.jpg')
             image = cv2.imread(self.image_path + image_filename)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = cv2.resize(image, self.image_size, interpolation=cv2.INTER_NEAREST)
             self.aug_images.append(image)
             if len(self.aug_labels) % 100 == 0:
                 print('Reading augmentation image & label pairs',
@@ -297,9 +308,9 @@ class VOC2012(Dataset):
         '''
         self.read_train_images()
         self.read_train_labels()
+        self.save_train_data(train_data_save_path)
         self.read_val_images()
         self.read_val_labels()
-        self.save_train_data(train_data_save_path)
         self.save_val_data(val_data_save_path)
 
     def load_all_data(self,

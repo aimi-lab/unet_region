@@ -1,12 +1,12 @@
 from os.path import join as pjoin
 import yaml
-from pytorch_utils.models.unet import UNet
+from unet_region.models.unet import UNet
 import munch
 import torch
 import pandas as pd
 import numpy as np
-from pytorch_utils.pascal_voc_loader_patch import pascalVOCLoaderPatch
-from pytorch_utils.pascal_voc_loader_patch import collate_fn_pascal_patch
+from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
+from unet_region.pascal_voc_loader_patch import collate_fn_pascal_patch
 from torch.utils.data.sampler import SubsetRandomSampler
 import matplotlib.pyplot as plt
 import tqdm

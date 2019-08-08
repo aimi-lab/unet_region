@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import time
 
-from dar_package.utils.data_utils import batch_diag
+from unet_region.baselines.darnet.utils.data_utils import batch_diag
 
 
 def evolve_active_rays_fast(rho, beta, data, kappa, theta, delta_theta, rho_target, origin,
@@ -13,8 +13,20 @@ def evolve_active_rays_fast(rho, beta, data, kappa, theta, delta_theta, rho_targ
     assert (rho.device == beta.device == data.device 
             == theta.device == delta_theta.device == rho_target.device
             == origin.device)
+
+    # beta = beta
+    # data = data
+    # kappa = kappa
+    # rho = rho.squeeze()
+    # theta = theta.squeeze()
+
+    # assuming all batches have same delta_theta
+    # delta_theta = delta_theta
+    # rho_target = rho_target
+    # origin = origin.squeeze()
+
     batch_size, height, width = data.size()
-    _, L = rho.size()
+    L = rho.shape[-1]
     rho_init = rho.clone()
     rho_min = torch.ones_like(rho_init) * rho_min
 
@@ -22,11 +34,11 @@ def evolve_active_rays_fast(rho, beta, data, kappa, theta, delta_theta, rho_targ
     sin_theta = torch.sin(theta)                    # (N, L)
     cos_delta_theta = torch.cos(delta_theta)        # (N, L)
     cos_2_delta_theta = torch.cos(2 * delta_theta)  # (N, L)
-    idx = np.arange(L)                              # (L, )
+    idx = torch.arange(L)                           # (L, )
     diagonal_length = np.linalg.norm([height, width])
     
-    roll_m1 = np.roll(idx, -1)
-    roll_p1 = np.roll(idx, 1)
+    roll_m1 = torch.roll(idx, -1)
+    roll_p1 = torch.roll(idx, 1)
 
     if debug_hist:
         rho_hist = torch.zeros(max_steps + 1, batch_size, L, device=rho.device, dtype=rho.dtype)
@@ -151,13 +163,13 @@ def evolve_active_rays_fast(rho, beta, data, kappa, theta, delta_theta, rho_targ
         # b_corner = (-2 * beta_i[0] - 2 * beta_i[-1]) * cos_delta_theta / delta_theta**4
         # e_corner = a_corner
         # d_corner = b_corner   (N, 1)
-        a = beta_i[:, 1:L-1] * cos_2_delta_theta
-        b = (-2 * beta_i[:, 1:L] - 2 * beta_i[:, :L-1]) * cos_delta_theta
+        a =  cos_2_delta_theta[0] * beta_i[:, 1:L-1]
+        b =  cos_delta_theta[0] * (-2 * beta_i[:, 1:L] - 2 * beta_i[:, :L-1])
         c = (beta_i[:, roll_m1] + 4 * beta_i + beta_i[:, roll_p1])
         d = b
         e = a
-        a_corner = beta_i[:, roll_m1[-2:]] * cos_2_delta_theta
-        b_corner = (-2 * beta_i[:, 0].unsqueeze(1) - 2 * beta_i[:, -1].unsqueeze(1)) * cos_delta_theta
+        a_corner =  cos_2_delta_theta[0] * beta_i[:, roll_m1[-2:]]
+        b_corner = (-2 * beta_i[:, 0].unsqueeze(1) - 2 * beta_i[:, -1].unsqueeze(1)) * cos_delta_theta[0]
         e_corner = a_corner
         d_corner = b_corner
 

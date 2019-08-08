@@ -13,14 +13,14 @@ matplotlib.use('agg')
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from dar_package.utils.train_utils import AverageMeter, unpack_sample, save_config
-from dar_package.losses.losses import DistanceLossFast
+from unet_region.baselines.darnet.utils.train_utils import AverageMeter, unpack_sample, save_config
+from unet_region.baselines.darnet.losses.losses import DistanceLossFast
 torch.manual_seed(1234)
 np.random.seed(1234)
 
 
 # Get model and loss
-class ModelAndLoss(torch.nn.Module):
+class ModelPretrain(torch.nn.Module):
     def __init__(self, Network, restore):
         super(ModelAndLoss, self).__init__()
         self.net = Network()

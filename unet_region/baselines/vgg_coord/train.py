@@ -1,11 +1,11 @@
-from pytorch_utils.pascal_voc_loader_patch import pascalVOCLoaderPatch
-from pytorch_utils.patch_loader import PatchLoader
-from pytorch_utils.learning_loader import LearningLoader
-from pytorch_utils.my_augmenters import rescale_augmenter, Normalize
+from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
+from unet_region.patch_loader import PatchLoader
+from unet_region.learning_loader import LearningLoader
+from unet_region.my_augmenters import rescale_augmenter, Normalize
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data.sampler import RandomSampler
-from pytorch_utils.sub_sampler import SubsetSampler
+from unet_region.sub_sampler import SubsetSampler
 import torch
 from os.path import join as pjoin
 import os

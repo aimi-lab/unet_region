@@ -3,7 +3,7 @@ from os.path import join as pjoin
 from skimage import io
 import glob
 import numpy as np
-from pytorch_utils.utils import get_opt_box
+from unet_region.utils import get_opt_box
 
 
 class Loader:

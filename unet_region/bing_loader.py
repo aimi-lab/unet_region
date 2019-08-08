@@ -1,4 +1,4 @@
-from pytorch_utils.loader import Loader
+from unet_region.loader import Loader
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils import data

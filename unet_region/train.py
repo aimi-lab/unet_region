@@ -4,7 +4,7 @@ from my_augmenters import rescale_augmenter, Normalize
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data.sampler import RandomSampler
-from pytorch_utils.sub_sampler import SubsetSampler
+from unet_region.sub_sampler import SubsetSampler
 import torch
 from os.path import join as pjoin
 import os
