@@ -5,7 +5,11 @@ from torch.autograd import Variable
 from collections import OrderedDict
 from torch.nn import init
 import numpy as np
+<<<<<<< HEAD
 from pytorch_utils.models import coordconv
+=======
+from unet_region.models import coordconv
+>>>>>>> tmp
 
 
 def conv3x3(in_channels,

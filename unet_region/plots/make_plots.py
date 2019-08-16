@@ -9,7 +9,11 @@ import matplotlib as mpl
 from unet_region.plots.data_paths import paths
 
 root_dir = '/home/ubelix/runs/unet_region'
+<<<<<<< HEAD
 out_dir = '/home/ubelix/data/medical-labeling/unet_region'
+=======
+out_dir = '/home/ubelix/runs/unet_region'
+>>>>>>> tmp
 seq_types = ['tweezer', 'cochlea', 'slitlamp', 'brain']
 
 
@@ -39,17 +43,27 @@ def make_dataframe(root_dir, run_dir, dirs, fname, method):
     return pds
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> tmp
 dfs = []
 for k, v in paths.items():
     df = pd.concat(
         make_dataframe(root_dir, k[0], v, 'scores.csv', k[1]), axis=1)
     dfs.append(df)
 
+<<<<<<< HEAD
 # for k, v in paths.items():
 #     df = pd.concat(
 #         make_dataframe(root_dir, k[0], v, 'scores_chan_vese.csv', k[1]), axis=1)
 #     dfs.append(df)
+=======
+for k, v in paths.items():
+    df = pd.concat(
+        make_dataframe(root_dir, k[0], v, 'scores_chan_vese.csv', 'pascal_1f_cv'), axis=1)
+    dfs.append(df)
+>>>>>>> tmp
 
 dfs = pd.concat(dfs, axis=1)
 
@@ -64,7 +78,11 @@ df_to_plot = df_to_plot.reset_index()
 # plt.show()
 
 sns.set_style("whitegrid")
+<<<<<<< HEAD
 fig, ax = plt.subplots(len(metrics_to_plot), 1, figsize=(9, 8))
+=======
+fig, ax = plt.subplots(len(metrics_to_plot), 1, figsize=(11, 8))
+>>>>>>> tmp
 ax = ax.flatten()
 for m, a in zip(metrics_to_plot, ax):
     sns.boxplot(
@@ -77,5 +95,12 @@ for m, a in zip(metrics_to_plot, ax):
 fig.tight_layout()
 # Put the legend out of the figure
 
+<<<<<<< HEAD
 # fig.(pjoin(out_dir, 'all.png'))
 fig.show()
+=======
+path = pjoin(out_dir, 'all.png')
+print('saving figure to {}'.format(path))
+fig.savefig(path)
+# fig.show()
+>>>>>>> tmp

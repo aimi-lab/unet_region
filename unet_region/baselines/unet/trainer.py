@@ -1,13 +1,13 @@
 import munch
 import logging
-import pytorch_utils.utils as utls
+from unet_region import utils as utls
 from tensorboardX import SummaryWriter
 from torchvision import utils as tutls
 import torch
 import torch.optim as optim
 import tqdm
 from os.path import join as pjoin
-from region_loss import BCERegionLoss
+from region_loss import MSERegionLoss
 from skimage import transform
 import numpy as np
 
@@ -22,7 +22,7 @@ class Trainer:
         self.device = torch.device('cuda' if self.cfg.cuda else 'cpu')
 
         # self.criterion = torch.nn.BCEWithLogitsLoss()
-        self.criterion = BCERegionLoss(
+        self.criterion = MSERegionLoss(
             self.cfg.loss_size,
             self.cfg.in_shape,
             device=self.device,
@@ -41,16 +41,16 @@ class Trainer:
         if (cfg.checkpoint_path is not None):
             self.logger.info('Loading checkpoint: {}'.format(
                 cfg.checkpoint_path))
-            checkpoint = torch.load(cfg.checkpoint_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
+            checkpoint = torch.load(cfg.checkpoint_path, map_location='cpu')
+            self.model.load_state_dict(checkpoint)
 
-        self.optimizer = optim.RMSprop(
+        self.optimizer = optim.SGD(
             model.parameters(),
             momentum=self.cfg.momentum,
             lr=self.cfg.lr,
-            alpha=self.cfg.alpha,
-            eps=self.cfg.eps,
             weight_decay=self.cfg.weight_decay)
+
+        self.model = self.model.to(self.device)
 
     def train(self):
 
@@ -139,7 +139,7 @@ class Trainer:
                     utls.save_checkpoint(
                         {
                             'epoch': epoch + 1,
-                            'state_dict': self.model.state_dict(),
+                            'model': self.model,
                             'best_loss': best_loss,
                             'optimizer': self.optimizer.state_dict()
                         },

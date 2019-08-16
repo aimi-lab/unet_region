@@ -1,6 +1,6 @@
 import munch
 import logging
-import pytorch_utils.utils as utls
+import unet_region.utils as utls
 from tensorboardX import SummaryWriter
 from torchvision import utils as tutls
 import torch

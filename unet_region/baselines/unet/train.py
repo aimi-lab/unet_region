@@ -1,10 +1,10 @@
-from pytorch_utils.pascal_voc_loader_patch import pascalVOCLoaderPatch
-from pytorch_utils.patch_loader import PatchLoader
-from pytorch_utils.models.unet import UNet
+from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
+from unet_region.patch_loader import PatchLoader
+from unet_region.models.unet import UNet
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data.sampler import RandomSampler
-from pytorch_utils.sub_sampler import SubsetSampler
+from unet_region.sub_sampler import SubsetSampler
 import torch
 from os.path import join as pjoin
 import os
@@ -14,26 +14,27 @@ from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
-from trainer import Trainer
-from my_augmenters import rescale_augmenter
-from unet_region import params
+from unet_region.baselines.unet.trainer import Trainer
+from unet_region.my_augmenters import rescale_augmenter
+from unet_region.baselines.unet import params
+
 
 def main(cfg):
 
     d = datetime.datetime.now()
 
-    if(cfg.data_type == 'medical'):
-        ds_dir = os.path.split(cfg.in_dir)[-1]
+    if (cfg.data_type == 'medical'):
+        ds_dir = os.path.split(cfg.data_dir)[-1]
     else:
         ds_dir = cfg.data_type
 
-    run_dir = pjoin(cfg.out_dir, 'runs', '{}_{:%Y-%m-%d_%H-%M}'.format(
+    run_dir = pjoin(cfg.out_dir, '{}_{:%Y-%m-%d_%H-%M}'.format(
         ds_dir, d))
 
     in_shape = [cfg.in_shape] * 2
 
     transf = iaa.Sequential([
-        iaa.Invert(0.5) if 'Dataset1' in cfg.in_dir else iaa.Noop(),
+        iaa.Invert(0.5) if 'Dataset1' in cfg.data_dir else iaa.Noop(),
         iaa.SomeOf(3, [
             iaa.Affine(rotate=iap.Uniform(-15., 15.)),
             iaa.Affine(shear=iap.Uniform(-15., -15.)),
@@ -46,17 +47,16 @@ def main(cfg):
 
     if cfg.data_type == 'pascal':
         loader = pascalVOCLoaderPatch(
-            cfg.in_dir, patch_rel_size=cfg.patch_rel_size, augmentations=transf)
-        collate_fn = pascalVOCLoaderPatch.collate_fn_pascal_patch
+            pjoin(cfg.data_dir, 'VOCdevkit'),
+            patch_rel_size=cfg.patch_rel_size,
+            augmentations=transf)
     elif cfg.data_type == 'medical':
         loader = PatchLoader(
-            cfg.in_dir,
+            cfg.data_dir,
             'hand',
             fake_len=cfg.fake_len,
-            make_opt_box=False,
             fix_frames=cfg.frames,
             augmentation=transf)
-        collate_fn = PatchLoader.collate_fn
     else:
         raise Exception('data-type must be pascal or medical')
 
@@ -92,7 +92,7 @@ def main(cfg):
         loader,
         batch_size=cfg.batch_size,
         num_workers=cfg.n_workers,
-        collate_fn=collate_fn,
+        collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn,
         sampler=train_sampler)
 
@@ -101,23 +101,25 @@ def main(cfg):
         loader,
         num_workers=cfg.n_workers,
         batch_size=cfg.batch_size,
-        collate_fn=collate_fn,
+        collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn_dummy,
         sampler=valid_sampler)
 
-    # loader for previewing images 
+    # loader for previewing images
     prev_sampler = SubsetRandomSampler(val_indices)
     prev_loader = torch.utils.data.DataLoader(
         loader,
         num_workers=cfg.n_workers,
-        collate_fn=collate_fn,
+        collate_fn=loader.collate_fn,
         sampler=prev_sampler,
         batch_size=4,
         drop_last=True)
 
-    dataloaders = {'train': train_loader,
-                   'val': val_loader,
-                   'prev': prev_loader}
+    dataloaders = {
+        'train': train_loader,
+        'val': val_loader,
+        'prev': prev_loader
+    }
 
     model = UNet(
         in_channels=3,
@@ -137,8 +139,8 @@ def main(cfg):
     trainer = Trainer(model, dataloaders, cfg, run_dir)
     trainer.train()
 
-
     return cfg
+
 
 if __name__ == "__main__":
 

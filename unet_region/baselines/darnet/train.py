@@ -1,5 +1,9 @@
 from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
 from unet_region.patch_loader import PatchLoader
+<<<<<<< HEAD
+=======
+from skimage import transform, segmentation
+>>>>>>> tmp
 from unet_region.sub_sampler import SubsetSampler
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -13,23 +17,120 @@ from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
+<<<<<<< HEAD
 from unet_region.baselines.darnet.drn_contours import DRNContours
 from unet_region.baselines.darnet.trainer import Trainer
 from unet_region.my_augmenters import rescale_augmenter
 from unet_region.baselines.unet import params
+=======
+from unet_region.baselines.darnet.models.drn_contours import DRNContours
+from unet_region.baselines.darnet.losses.losses import DistanceLossFast
+from unet_region.baselines.darnet.trainer import Trainer
+from unet_region.baselines.darnet import params
+from unet_region.my_augmenters import rescale_augmenter, Normalize
+from unet_region.baselines.darnet.utils import my_utils as utls
+
+
+class ModelContours(torch.nn.Module):
+    def __init__(self, network, restore):
+        super(ModelContours, self).__init__()
+        self.net = network
+        print("Loading checkpoint from {}".format(restore))
+        checkpoint = torch.load(restore, map_location='cpu')
+        print("Loaded checkpoint")
+        self.net.load_state_dict(checkpoint)
+        self.distance_loss = DistanceLossFast()
+
+    def forward(self, sample):
+        loss, out = self.net(sample)
+        beta_scale_norm = 0.005
+        beta_scale_postnorm = 1.0
+        kappa_scale = 0.1
+
+        beta = torch.tanh(out['beta'] * beta_scale_norm) * beta_scale_postnorm
+        kappa = out['kappa'] * kappa_scale
+
+        out_dl = self.distance_loss(
+            sample['init_contour_radii'], sample['interp_radii'],
+            sample['init_contour_origin'], beta, out['data'], kappa,
+            sample['interp_angles'], sample['delta_angles'])
+
+        # Recover initial contour
+        init_contour_origin = torch.repeat_interleave(
+            sample['init_contour_origin'].unsqueeze(1), out_dl['rho'].shape[1],
+            1).squeeze()
+        rho_cos_theta = sample['init_contour_radii'] * torch.cos(
+            sample['interp_angles'])
+        rho_sin_theta = sample['init_contour_radii'] * torch.sin(
+            sample['interp_angles'])
+        joined = torch.stack([rho_cos_theta, rho_sin_theta], dim=-1).squeeze()
+        contour = init_contour_origin + joined
+        init_x = contour[..., 0]
+        init_y = contour[..., 1]
+
+        out['init_x'] = init_x
+        out['init_y'] = init_y
+
+        # merge outputs from backbone and active contour outputs
+        out = {**out, **out_dl}
+        return loss, out
+
+
+# Get model and loss
+class ModelPretrain(torch.nn.Module):
+    def __init__(self, with_coordconv=False,
+                 with_coordconv_r=False):
+        super(ModelPretrain, self).__init__()
+        self.net = DRNContours(with_coordconv=with_coordconv,
+                               with_coordconv_r=with_coordconv_r)
+        self.l1_loss_func = torch.nn.SmoothL1Loss()
+
+    def forward(self, sample):
+        output = self.net(sample['image'])
+        assert len(output) == 3 or len(output) == 6
+        beta, data, kappa = output[-3:]
+        beta = beta.unsqueeze(1)
+        kappa = kappa.unsqueeze(1)
+        data = data.unsqueeze(1)
+        loss = self.l1_loss_func(beta, sample['label/edt_beta'])
+        loss += self.l1_loss_func(data, sample['label/edt_D'])
+        loss += self.l1_loss_func(
+            kappa, sample['label/edt_kappa'])
+
+        if len(output) == 6:
+            beta0, data0, kappa0 = output[:3]
+            beta0 = beta0.unsqueeze(1)
+            kappa0 = kappa0.unsqueeze(1)
+            data0 = data0.unsqueeze(1)
+            loss += self.l1_loss_func(
+                beta0, sample['label/edt_beta'])
+            loss += self.l1_loss_func(
+                data0, sample['label/edt_D'])
+            loss += self.l1_loss_func(
+                kappa0, sample['label/edt_kappa'])
+        return loss, {'kappa': kappa, 'beta': beta, 'data': data}
+>>>>>>> tmp
 
 
 def main(cfg):
 
     d = datetime.datetime.now()
 
+<<<<<<< HEAD
     if (cfg.data_type == 'medical'):
+=======
+    if (cfg.phase != 'pascal'):
+>>>>>>> tmp
         ds_dir = os.path.split(cfg.in_dir)[-1]
     else:
         ds_dir = cfg.data_type
 
+<<<<<<< HEAD
     run_dir = pjoin(cfg.out_dir, 'runs', '{}_{:%Y-%m-%d_%H-%M}'.format(
         ds_dir, d))
+=======
+    run_dir = pjoin(cfg.out_dir, '{}_{:%Y-%m-%d_%H-%M}'.format(ds_dir, d))
+>>>>>>> tmp
 
     in_shape = [cfg.in_shape] * 2
 
@@ -45,6 +146,7 @@ def main(cfg):
         iaa.Resize(in_shape), rescale_augmenter
     ])
 
+<<<<<<< HEAD
     if cfg.data_type == 'pascal':
         loader = pascalVOCLoaderPatch(
             pjoin(cfg.in_dir, 'VOC2012'),
@@ -60,6 +162,31 @@ def main(cfg):
             augmentation=transf)
     else:
         raise Exception('data-type must be pascal or medical')
+=======
+    normalization = Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+    if cfg.phase == 'pascal':
+        loader = pascalVOCLoaderPatch(
+            cfg.in_dir,
+            patch_rel_size=cfg.patch_rel_size,
+            normalization=normalization,
+            late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
+                                                     init_radius),
+            augmentations=transf)
+    elif (cfg.phase == 'data' or cfg.phase == 'contours'):
+        loader = PatchLoader(
+            cfg.in_dir,
+            'hand',
+            fake_len=cfg.fake_len,
+            late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
+                                                     init_radius),
+            fix_frames=cfg.frames,
+            normalization=normalization,
+            augmentation=transf)
+    else:
+        raise Exception('phase must be pascal, data, or contours')
+>>>>>>> tmp
 
     # Creating data indices for training and validation splits:
     validation_split = 1 - cfg.ds_split
@@ -95,7 +222,12 @@ def main(cfg):
         num_workers=cfg.n_workers,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn,
+<<<<<<< HEAD
         sampler=train_sampler)
+=======
+        sampler=train_sampler,
+        drop_last=True)
+>>>>>>> tmp
 
     # each batch will give same locations / augmentations
     val_loader = torch.utils.data.DataLoader(
@@ -104,7 +236,12 @@ def main(cfg):
         batch_size=cfg.batch_size,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn_dummy,
+<<<<<<< HEAD
         sampler=valid_sampler)
+=======
+        sampler=valid_sampler,
+        drop_last=True)
+>>>>>>> tmp
 
     # loader for previewing images
     prev_sampler = SubsetRandomSampler(val_indices)
@@ -122,9 +259,15 @@ def main(cfg):
         'prev': prev_loader
     }
 
+<<<<<<< HEAD
     model = DRNContours(
         in_channels=3,
         out_channels=3)
+=======
+    model = ModelPretrain(cfg.coordconv, cfg.coordconv_r)
+    if cfg.phase == 'contours':
+        model = ModelContours(model, cfg.checkpoint_path)
+>>>>>>> tmp
 
     cfg.run_dir = run_dir
 
@@ -144,8 +287,35 @@ if __name__ == "__main__":
 
     p.add('--out-dir', required=True)
     p.add('--in-dir', required=True)
+<<<<<<< HEAD
     p.add('--checkpoint-path', default=None)
 
     cfg = p.parse_args()
 
+=======
+    p.add(
+        '--phase',
+        required=True,
+        help=
+        'pascal (pretrain), data (pretrain), contours. Adequate values for in-dir and checkpoint-path must be provided'
+    )
+    p.add('--checkpoint-path', default=None)
+    cfg = p.parse_args()
+
+    # p.add('--out-dir')
+    # p.add('--in-dir')
+    # p.add('--checkpoint-path',
+    #       default=None)
+    # p.add('--phase')
+    # cfg = p.parse_args()
+    # cfg.n_workers = 0
+    # cfg.in_dir = '/home/ubelix/data/medical-labeling/Dataset00'
+    # cfg.out_dir = '/home/ubelix/runs/scratch'
+    # cfg.checkpoint_path = '/home/ubelix/runs/darnet/Dataset00_2019-08-09_13-05/checkpoints/checkpoint_ls.pth.tar'
+    # cfg.phase = 'contours'
+
+    # cfg.coordconv = True
+    # cfg.coordconv_r = True
+
+>>>>>>> tmp
     main(cfg)

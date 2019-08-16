@@ -5,11 +5,19 @@ n-patches: 1000
 
 data-type: pascal
 
+<<<<<<< HEAD
 epochs-pretrain: 200
 lr-decay: 0.3
 
 # optimizer
 lr: 0.0003
+=======
+epochs: 200
+lr-decay: 0.3
+
+# optimizer
+lr: 0.0001
+>>>>>>> tmp
 momentum: 0.9
 eps: 1e-08
 weight-decay: 0.0004

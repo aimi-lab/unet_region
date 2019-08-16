@@ -6,7 +6,7 @@ from torch.nn import NLLLoss, LogSoftmax, CrossEntropyLoss
 import matplotlib.pyplot as plt
 
 
-class BCERegionLoss(torch.nn.Module):
+class MSERegionLoss(torch.nn.Module):
     """
     Computes BCE on a circular region defined by radius_rel
     """
@@ -20,7 +20,7 @@ class BCERegionLoss(torch.nn.Module):
         """
         lambda_ penalizes on background
         """
-        super(BCERegionLoss, self).__init__()
+        super(MSERegionLoss, self).__init__()
 
         self.size = int(region_rel_size * size)
         self.size += 0 if self.size % 2 else 1
@@ -30,7 +30,8 @@ class BCERegionLoss(torch.nn.Module):
         self.weights = torch.tensor([self.lambda_, 1.]).to(device)
         # self.soft_max = LogSoftmax(dim=1)
         # self.loss_fn = NLLLoss(reduction='none')
-        self.loss_fn = CrossEntropyLoss(weight=self.weights)
+        # self.loss_fn = CrossEntropyLoss(weight=self.weights)
+        self.loss_fn = F.mse_loss
 
         self.eps = 10e-10
 
@@ -44,10 +45,6 @@ class BCERegionLoss(torch.nn.Module):
                         self.size // 2 + 1, size_in // 2 -
                         self.size // 2:size_in // 2 + self.size // 2 + 1]
 
-        input = torch.cat((1 - input, input), dim=1)
-        target = target.type(torch.long)
-        target = target.squeeze(dim=1)
         loss = self.loss_fn(input, target)
-
 
         return loss

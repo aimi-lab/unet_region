@@ -45,15 +45,33 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
     weight_decay = float(cfg_exp['weight_decay'])
     patience = int(cfg_exp['patience'])
     save_delay = int(cfg_exp['save_delay'])
+<<<<<<< HEAD
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+=======
+    device = torch.device(
+        "cuda") if torch.cuda.is_available() else torch.device("cpu")
+>>>>>>> tmp
 
     # Get dataloaders
     train_dataset = Dataset(split='train_{}'.format(split_num))
     val_dataset = Dataset(split='val_{}'.format(split_num))
+<<<<<<< HEAD
     train_loader = torch.utils.data.DataLoader(train_dataset, 
         batch_size=batch_size, num_workers=num_workers, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, 
         batch_size=batch_size, num_workers=num_workers, shuffle=True)
+=======
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=True)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=True)
+>>>>>>> tmp
 
     # Get model and loss
     class ModelAndLoss(torch.nn.Module):
@@ -61,10 +79,15 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
             super(ModelAndLoss, self).__init__()
             self.net = Network()
             self.l1_loss_func = torch.nn.SmoothL1Loss()
+<<<<<<< HEAD
+=======
+
+>>>>>>> tmp
         def forward(self, sample):
             output = self.net(sample['image'])
             assert len(output) == 3 or len(output) == 6
             beta, data, kappa = output[-3:]
+<<<<<<< HEAD
             loss = self.l1_loss_func(beta, sample['distance_transform_outside'])
             loss += self.l1_loss_func(data, sample['distance_transform'])
             loss += self.l1_loss_func(kappa, sample['distance_transform_inside'])
@@ -81,14 +104,43 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
     # Get optimizer and scheduler
     optimizer = torch.optim.Adam(model_and_loss.net.parameters(), 
         lr=learning_rate, weight_decay=weight_decay, amsgrad=True)
+=======
+            loss = self.l1_loss_func(beta,
+                                     sample['distance_transform_outside'])
+            loss += self.l1_loss_func(data, sample['distance_transform'])
+            loss += self.l1_loss_func(kappa,
+                                      sample['distance_transform_inside'])
+
+            if len(output) == 6:
+                beta0, data0, kappa0 = output[:3]
+                loss += self.l1_loss_func(beta0,
+                                          sample['distance_transform_outside'])
+                loss += self.l1_loss_func(data0, sample['distance_transform'])
+                loss += self.l1_loss_func(kappa0,
+                                          sample['distance_transform_inside'])
+            return loss, output
+
+    model_and_loss = ModelAndLoss().to(device)
+
+    # Get optimizer and scheduler
+    optimizer = torch.optim.Adam(
+        model_and_loss.net.parameters(),
+        lr=learning_rate,
+        weight_decay=weight_decay,
+        amsgrad=True)
+>>>>>>> tmp
     if 'gamma' in cfg_exp:
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, gamma=float(cfg_exp['gamma']), step_size=patience)
         print("Scheduler: StepLR with gamma {}".format(cfg_exp['gamma']))
     else:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+<<<<<<< HEAD
             optimizer, factor=0.5, patience=patience, verbose=True
         )
+=======
+            optimizer, factor=0.5, patience=patience, verbose=True)
+>>>>>>> tmp
         print("Scheduler: ReduceLROnPlateau with factor 0.5")
 
     if len(train_dataset) // batch_size > 1000:
@@ -125,12 +177,21 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
 
         if 'gamma' not in cfg_exp:
             scheduler.step(val_losses.avg)
+<<<<<<< HEAD
         
         # Save model; keep record of the validation loss in a heap
         # so the largest values can be popped off for checkpoint deletion
         if epoch_num + 1 >= save_delay:
             checkpoint_path = os.path.join(save_folder,
                 "chk-{:04}.pth.tar".format(epoch_num))
+=======
+
+        # Save model; keep record of the validation loss in a heap
+        # so the largest values can be popped off for checkpoint deletion
+        if epoch_num + 1 >= save_delay:
+            checkpoint_path = os.path.join(
+                save_folder, "chk-{:04}.pth.tar".format(epoch_num))
+>>>>>>> tmp
             checkpoint = {
                 'epoch': epoch_num + 1,
                 'state_dict': model_and_loss.net.state_dict(),
@@ -138,7 +199,11 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
                 'val_loss': val_losses.val
             }
             heapq.heappush(checkpoint_heap, (-val_losses.val, checkpoint_path))
+<<<<<<< HEAD
             
+=======
+
+>>>>>>> tmp
             # Avoid saving checkpoints if not necessary to reduce bandwidth consumption
             if len(checkpoint_heap) > keep_best:
                 _, checkpoint_to_delete = heapq.heappop(checkpoint_heap)
@@ -154,8 +219,13 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
 
         # On the very last epoch, save the checkpoint
         if epoch_num + 1 == num_epochs:
+<<<<<<< HEAD
             checkpoint_path = os.path.join(save_folder,
                 "chk-{:04}.pth.tar".format(epoch_num))
+=======
+            checkpoint_path = os.path.join(
+                save_folder, "chk-{:04}.pth.tar".format(epoch_num))
+>>>>>>> tmp
             torch.save(checkpoint, checkpoint_path)
 
         # Reset val losses for next epoch
@@ -164,6 +234,13 @@ def run(cfg_exp, config_object, Dataset, Network, split_num):
 
     # Set aside very best checkpoint
     _, best_checkpoint_path = checkpoint_heap[0]
+<<<<<<< HEAD
     shutil.copyfile(best_checkpoint_path, os.path.join(save_folder, "best_chk.pth.tar"))
 
     return os.path.abspath(checkpoint_path)
+=======
+    shutil.copyfile(best_checkpoint_path,
+                    os.path.join(save_folder, "best_chk.pth.tar"))
+
+    return os.path.abspath(checkpoint_path)
+>>>>>>> tmp

@@ -30,6 +30,7 @@ class RaySnake:
 
         self.r = self.clip_r()
 
+<<<<<<< HEAD
     def get_contour(self, a, rc, L):
 
         contour_nodes = make_spline_contour(a, 100)
@@ -64,6 +65,8 @@ class RaySnake:
                 
         return np.array(intersects_coords)
 
+=======
+>>>>>>> tmp
 
     def make_bounds(self):
         thetas = np.linspace(0, 2 * np.pi, self.L)
@@ -128,8 +131,15 @@ def active_contour_steps(image,
 
     """
     max_iterations = int(max_iterations)
+<<<<<<< HEAD
     if max_iterations <= 0:
         raise ValueError("max_iterations should be >0.")
+=======
+
+    if max_iterations <= 0:
+        raise ValueError("max_iterations should be >0.")
+
+>>>>>>> tmp
     convergence_order = 10
 
     start = time.time()
@@ -330,3 +340,40 @@ def make_spline_contour(arr, L, ds_contour_rate=0.1):
     [nodes[:, 0], nodes[:, 1]] = interpolate.splev(np.linspace(0, 1, L), tck)
 
     return nodes
+<<<<<<< HEAD
+=======
+
+def get_contour(a, rc, L):
+
+    contour_nodes = make_spline_contour(a, 100)
+    contour_polyg = Polygon(contour_nodes)
+
+    line_length = np.max(a.shape)
+    p0 = rc
+    p1s = [(rc[0] + line_length * np.cos(theta),
+            rc[1] + line_length * np.sin(theta))
+            for theta in np.linspace(0, 2 * np.pi, L)]
+
+    # store lines from rc to all remote points
+    rays = [LineString([p0, p1]) for p1 in p1s]
+
+    intersects = [contour_polyg.intersection(ray)
+                    for ray in rays]
+
+    intersects_coords = []
+    for l in intersects:
+        try:
+            intersects_coords.append(l.coords[-1])
+        except:
+            intersects_coords.append(l[0].coords[-1])
+
+    intersects_coords = np.array(intersects_coords)
+
+    # plt.plot(contour_nodes[:, 0], contour_nodes[:, 1])
+    # for p in p1s:
+    #     plt.plot((p0[0], p[0]), (p0[1], p[1]), 'ro--')
+    # plt.plot(intersects_coords[:, 0], intersects_coords[:, 1], 'x')
+    # plt.show()
+
+    return np.array(intersects_coords)
+>>>>>>> tmp

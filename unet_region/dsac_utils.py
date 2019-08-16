@@ -23,7 +23,8 @@ def make_init_snake(radius, shape, L):
     return init_snake
 
 
-def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, max_px_move,
+def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, delta_s,
+                  max_px_move,
                   n_iter, verbose=False):
 
     snakes = []
@@ -41,9 +42,10 @@ def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, max_px_move,
         snake_ = active_contour_steps(
             map_e[i, 0, ...],
             init_snake,
-            alpha=map_a[i, 0, ...],
-            beta=map_b[i, 0, ...],
-            kappa=map_k[i, 0, ...],
+            map_a[i, 0, ...],
+            map_b[i, 0, ...],
+            map_k[i, 0, ...],
+            delta_s,
             gamma=gamma,
             max_px_move=max_px_move,
             max_iterations=n_iter,
@@ -55,6 +57,7 @@ def acm_inference(map_e, map_a, map_b, map_k, init_snake, gamma, max_px_move,
 
 
 def active_contour_steps(image, snake, alpha, beta, kappa,
+                         delta_s,
                          w_line=0, w_edge=1, gamma=0.01,
                          max_px_move=1.0,
                          max_iterations=2500,
@@ -107,10 +110,7 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
     if max_iterations <= 0:
         raise ValueError("max_iterations should be >0.")
     convergence_order = 10
-    valid_bcs = ['periodic', 'free', 'fixed', 'free-fixed',
-                 'fixed-free', 'fixed-fixed', 'free-free']
     img = img_as_float(image)
-    RGB = img.ndim == 3
 
     # Interpolate for smoothness:
     intp = RectBivariateSpline(np.arange(img.shape[1]),
@@ -120,6 +120,17 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
     start = time.time()
 
     x, y = snake[:, 0].astype(np.float), snake[:, 1].astype(np.float)
+    x_start = x.copy()
+    y_start = y.copy()
+
+    # check if snake is closed
+    is_closed = False
+    if((x[0] == x[-1]) and (y[0] == y[-1])):
+        is_closed = True
+        x = x[:-1]
+        y = y[:-1]
+        
+    dx, dy = np.zeros(x.shape), np.zeros(x.shape)
     n = len(x)
     xsave = np.empty((convergence_order, n))
     ysave = np.empty((convergence_order, n))
@@ -144,18 +155,21 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
     B = Bd0 + Bd1 + Bdm1 + Bd2 + Bdm2
         
     # make matrix that will be inverted
-    M_internal = gamma * np.eye(n) + (A + B)
+    M_internal = np.eye(n) + 2*gamma*(A/delta_s + B/(delta_s**2))
     inv = np.linalg.inv(M_internal)
 
     # Explicit time stepping for image energy minimization:
     for i in range(max_iterations):
-        # interpolate
+        # find derivative of "data" external energy function
         fx = intp(x, y, dx=1, grid=False)
         fy = intp(x, y, dy=1, grid=False)
 
         # ----------------
         # Get kappa values between nodes (balloon term)
         # ----------------
+        kappa_collection = kappa[fx.round().astype(int),
+                                 fy.round().astype(int)]
+
         # make snake vectors at x(s-1), x(s+1)
         xp1 = np.roll(x, -1)
         xm1 = np.roll(x, 1)
@@ -164,57 +178,75 @@ def active_contour_steps(image, snake, alpha, beta, kappa,
         yp1 = np.roll(y, -1)
         ym1 = np.roll(y, 1)
 
-        kappa_collection = kappa[fx.round().astype(int),
-                                 fy.round().astype(int)]
-
         # Get the derivative of the balloon energy
         h = np.arange(1, n + 1)
-        int_ends_x_next = xm1 - x
-        int_ends_x_prev = xp1 - x
-        int_ends_y_next = ym1 - y
-        int_ends_y_prev = yp1 - y
+        int_ends_x_prev = xm1 - x
+        int_ends_x_next = xp1 - x
+        int_ends_y_prev = ym1 - y
+        int_ends_y_next = yp1 - y
 
-        # contribution from the i+1 triangles
-        dEext_dx = (int_ends_y_next / n**2) * np.sum(
-            h * kappa_collection[::-1])
-        dEext_dx -= (int_ends_x_next / n**2) * np.sum(
+        # derivatives point in the normal (inside) direction when all k-values are equal
+        s = 10
+        dEb_dx = (int_ends_x_next / s**2) * np.sum(
+            h * kappa_collection)
+        dEb_dx += (int_ends_x_prev / s**2) * np.sum(
             h * kappa_collection)
 
-        dEext_dy = (int_ends_y_prev / n**2) * np.sum(
-            h * np.roll(kappa_collection, 1))
-        dEext_dy -= (int_ends_x_prev / n**2) * np.sum(
-            h * np.roll(kappa_collection, 1))
-
-        xn = inv @ (gamma*x + fx)
-        yn = inv @ (gamma*y + fy)
+        dEb_dy = (int_ends_y_next / s**2) * np.sum(
+            h * kappa_collection)
+        dEb_dy += (int_ends_y_prev / s**2) * np.sum(
+            h * kappa_collection)
 
         # Movements are capped to max_px_move per iteration:
-        dx = max_px_move*np.tanh(xn-x + dEext_dx*gamma)
-        dy = max_px_move*np.tanh(yn-y + dEext_dy*gamma)
-        # dx = max_px_move*np.tanh(xn-x + dEext_dx)
-        # dy = max_px_move*np.tanh(yn-y + dEext_dy)
-        x += dx
-        y += dy
+        dx = fx - dEb_dx
+        dy = fy - dEb_dy
+        norms = np.linalg.norm(np.array((dx, dy)).T, axis=1)
+        dx = max_px_move * (dx / norms.max())
+        dy = max_px_move * (dy / norms.max())
+
+        x = inv @ (x + gamma*dx)
+        y = inv @ (y + gamma*dy)
 
         # coordinates are capped to image frame
         x = np.clip(x, a_max=img.shape[1] - 1, a_min=0)
         y = np.clip(y, a_max=img.shape[0] - 1, a_min=0)
+
+        # if(i > 20):
+        #     plt.plot(x_start[:-1], y_start[:-1], 'bo-', label='(x, y)')
+        #     plt.quiver(x, y,
+        #                dx, dy,
+        #                alpha=0.2)
+        #     angles = [clockwiseangle((142, 131), (x_, y_))
+        #             for x_, y_ in zip(x, y)]
+        #     for j, a in enumerate(angles):
+        #         plt.annotate('{}: {:.1f}'.format(j, a*180/np.pi), (x[j], y[j]))
+        #     plt.plot((x + gamma*dx), (y + gamma*dy), 'ro-', label='(x_new, y_new)')
+        #     plt.suptitle('iter: {}'.format(i))
+        #     plt.grid(True)
+        #     plt.axes().set_aspect('equal', 'datalim')
+        #     plt.show()
+
         
         # Convergence criteria needs to compare to a number of previous
         # configurations since oscillations can occur.
-        j = i % (convergence_order+1)
-        if j < convergence_order:
-            xsave[j, :] = x
-            ysave[j, :] = y
-        else:
-            dist = np.min(np.max(np.abs(xsave-x[None, :]) +
-                                 np.abs(ysave-y[None, :]), 1))
-            if dist < convergence:
-                break
+        # j = i % (convergence_order+1)
+        # if j < convergence_order:
+        #     xsave[j, :] = x
+        #     ysave[j, :] = y
+        # else:
+        #     dist = np.min(np.max(np.abs(xsave-x[None, :]) +
+        #                          np.abs(ysave-y[None, :]), 1))
+        #     if dist < convergence:
+        #         break
 
     end = time.time()
     if(verbose):
         print('finished in {} iterations in {} s'.format(i+1, end-start))
+
+    if(is_closed):
+        x = np.concatenate((x, x[:1]))
+        y = np.concatenate((y, y[:1]))
+
     return np.array([x, y]).T
 
 

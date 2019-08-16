@@ -1,14 +1,15 @@
 from pascal_voc_loader_patch import pascalVOCLoaderPatch
 from patch_loader import PatchLoader
-from bing_loader import BingLoader
 from my_augmenters import rescale_augmenter, Normalize
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data.sampler import RandomSampler
-from pytorch_utils.sub_sampler import SubsetSampler
+from unet_region.sub_sampler import SubsetSampler
 import torch
 from os.path import join as pjoin
 import os
+import glob
+import shutil
 import datetime
 import yaml
 from imgaug import augmenters as iaa
@@ -16,7 +17,7 @@ from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
 import params
-from dsac import DSAC
+from darnet import DarNet
 from trainer import Trainer
 
 def main(cfg):
@@ -49,14 +50,39 @@ def main(cfg):
     normalization = Normalize(mean=[0.485, 0.456, 0.406],
                               std=[0.229, 0.224, 0.225])
 
-    if cfg.data_type == 'bing':
-        loader = BingLoader(
+    torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn = True
+
+    model = DarNet()
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    if torch.cuda.device_count() > 1:
+        print("Using", torch.cuda.device_count(), "GPUs")
+        cfg.batch_size *= torch.cuda.device_count()
+        model = torch.nn.DataParallel(model)
+
+    model.to(device)
+
+    if cfg.data_type == 'pascal':
+        if(cfg.scratch):
+            scratch_path = os.environ['TMPDIR']
+            files_to_copy = sorted(glob.glob(pjoin(cfg.in_dir, 'voc*.h5')))
+            for f in files_to_copy:
+                dest_path = pjoin(scratch_path, os.path.split(f)[-1])
+                if(not os.path.exists(dest_path)):
+                    print('Copying {} to {}'.format(f,
+                                                    scratch_path))
+                    shutil.copyfile(f, dest_path)
+                else:
+                    print('{} already exists!'.format(dest_path))
+            cfg.in_dir = scratch_path
+        loader = pascalVOCLoaderPatch(
             cfg.in_dir,
+            patch_rel_size=cfg.patch_rel_size,
+            make_edt=True,
             augmentations=transf,
             normalization=normalization)
-    elif cfg.data_type == 'pascal':
-        loader = pascalVOCLoaderPatch(
-            cfg.in_dir, patch_rel_size=cfg.patch_rel_size)
     elif cfg.data_type == 'medical':
         loader = PatchLoader(
             cfg.in_dir,
@@ -103,6 +129,7 @@ def main(cfg):
         num_workers=cfg.n_workers,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn,
+        drop_last=True,
         sampler=train_sampler)
 
     # each batch will give same locations / augmentations
@@ -111,6 +138,7 @@ def main(cfg):
         num_workers=cfg.n_workers,
         batch_size=cfg.batch_size,
         collate_fn=loader.collate_fn,
+        drop_last=True,
         worker_init_fn=loader.worker_init_fn_dummy,
         sampler=valid_sampler)
 
@@ -128,25 +156,21 @@ def main(cfg):
                    'val': val_loader,
                    'prev': prev_loader}
 
-    model = DSAC(
-        in_channels=3,
-        out_size=cfg.in_shape,
-        cuda=cfg.cuda,
-        alpha_init_bias=cfg.alpha_init_bias,
-        alpha_init_weight=cfg.alpha_init_weight,
-        beta_init_bias=cfg.beta_init_bias,
-        beta_init_weight=cfg.beta_init_weight,
-        kappa_init_bias=cfg.kappa_init_bias,
-        kappa_init_weight=cfg.kappa_init_weight)
-
     cfg.run_dir = run_dir
 
     # Save cfg
     with open(pjoin(run_dir, 'cfg.yml'), 'w') as outfile:
-        yaml.dump(cfg.__dict__, stream=outfile, default_flow_style=False)
+        yaml.dump(cfg.__dict__,
+                  stream=outfile,
+                  default_flow_style=False)
 
-    trainer = Trainer(model, dataloaders, cfg, run_dir)
-    trainer.train()
+    trainer = Trainer(model,
+                      dataloaders,
+                      cfg,
+                      run_dir)
+
+    # train level set branch
+    trainer.pretrain()
 
     return cfg
 
@@ -154,21 +178,21 @@ if __name__ == "__main__":
 
     p = params.get_params()
     p.add('--in-dir', required=True)
+    p.add('--scratch', default=False, action='store_true')
     p.add('--out-dir', required=True)
     p.add('--checkpoint-path')
 
     cfg = p.parse_args()
 
-    # cfg.data_type = 'bing'
-    # cfg.out_dir = '/home/krakapwa/Desktop/data'
-    # cfg.in_dir = '/home/krakapwa/Desktop/data/single_buildings/'
+    # cfg.checkpoint_path = None
+    # cfg.n_workers = 0
+    # cfg.data_type = 'pascal'
+    # cfg.out_dir = '/home/ubelix/data'
+    # cfg.in_dir = '/home/ubelix/data/VOCdevkit/'
 
     # cfg.data_type = 'medical'
     # cfg.out_dir = '/home/ubelix/medical-labeling/unet_region/runs/'
     # cfg.in_dir = '/home/ubelix/medical-labeling/Dataset20'
     # cfg.frames = [30]
-    # cfg.in_shape = 256
-    # cfg.checkpoint_path = None
-    # cfg.n_workers = 0
 
     main(cfg)
