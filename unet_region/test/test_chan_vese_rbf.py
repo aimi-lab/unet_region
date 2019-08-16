@@ -51,3 +51,17 @@ truth_contour = (segmentation.find_boundaries(truth > 0))
 
 rr, cc = draw.circle(p_y, p_x, 5, shape=img.shape)
 img[rr, cc, :] = (0, 1, 0)
+
+rbfstore = autls.RBFstore((p_x, p_y), 20, 20, 20, truth.shape)
+rbf = rbfstore[0, 0, 0]
+
+a = torch.zeros(len(rbfstore))
+rbfstore.make_phi(15, a)
+
+fig, ax = plt.subplots(1, 2)
+ax = ax.flatten()
+ax[0].imshow(rbf)
+ax[1].imshow(rbf > 0.1)
+plt.show()
+
+print(len(rbfstore))

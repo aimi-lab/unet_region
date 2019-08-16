@@ -1,9 +1,6 @@
 from unet_region.pascal_voc_loader_patch import pascalVOCLoaderPatch
 from unet_region.patch_loader import PatchLoader
-<<<<<<< HEAD
-=======
 from skimage import transform, segmentation
->>>>>>> tmp
 from unet_region.sub_sampler import SubsetSampler
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -17,12 +14,6 @@ from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
-<<<<<<< HEAD
-from unet_region.baselines.darnet.drn_contours import DRNContours
-from unet_region.baselines.darnet.trainer import Trainer
-from unet_region.my_augmenters import rescale_augmenter
-from unet_region.baselines.unet import params
-=======
 from unet_region.baselines.darnet.models.drn_contours import DRNContours
 from unet_region.baselines.darnet.losses.losses import DistanceLossFast
 from unet_region.baselines.darnet.trainer import Trainer
@@ -109,28 +100,18 @@ class ModelPretrain(torch.nn.Module):
             loss += self.l1_loss_func(
                 kappa0, sample['label/edt_kappa'])
         return loss, {'kappa': kappa, 'beta': beta, 'data': data}
->>>>>>> tmp
 
 
 def main(cfg):
 
     d = datetime.datetime.now()
 
-<<<<<<< HEAD
-    if (cfg.data_type == 'medical'):
-=======
     if (cfg.phase != 'pascal'):
->>>>>>> tmp
         ds_dir = os.path.split(cfg.in_dir)[-1]
     else:
         ds_dir = cfg.data_type
 
-<<<<<<< HEAD
-    run_dir = pjoin(cfg.out_dir, 'runs', '{}_{:%Y-%m-%d_%H-%M}'.format(
-        ds_dir, d))
-=======
     run_dir = pjoin(cfg.out_dir, '{}_{:%Y-%m-%d_%H-%M}'.format(ds_dir, d))
->>>>>>> tmp
 
     in_shape = [cfg.in_shape] * 2
 
@@ -146,7 +127,6 @@ def main(cfg):
         iaa.Resize(in_shape), rescale_augmenter
     ])
 
-<<<<<<< HEAD
     if cfg.data_type == 'pascal':
         loader = pascalVOCLoaderPatch(
             pjoin(cfg.in_dir, 'VOC2012'),
@@ -162,7 +142,7 @@ def main(cfg):
             augmentation=transf)
     else:
         raise Exception('data-type must be pascal or medical')
-=======
+
     normalization = Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
@@ -186,7 +166,6 @@ def main(cfg):
             augmentation=transf)
     else:
         raise Exception('phase must be pascal, data, or contours')
->>>>>>> tmp
 
     # Creating data indices for training and validation splits:
     validation_split = 1 - cfg.ds_split
@@ -222,12 +201,8 @@ def main(cfg):
         num_workers=cfg.n_workers,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn,
-<<<<<<< HEAD
-        sampler=train_sampler)
-=======
         sampler=train_sampler,
         drop_last=True)
->>>>>>> tmp
 
     # each batch will give same locations / augmentations
     val_loader = torch.utils.data.DataLoader(
@@ -236,12 +211,8 @@ def main(cfg):
         batch_size=cfg.batch_size,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn_dummy,
-<<<<<<< HEAD
-        sampler=valid_sampler)
-=======
         sampler=valid_sampler,
         drop_last=True)
->>>>>>> tmp
 
     # loader for previewing images
     prev_sampler = SubsetRandomSampler(val_indices)
@@ -259,15 +230,9 @@ def main(cfg):
         'prev': prev_loader
     }
 
-<<<<<<< HEAD
-    model = DRNContours(
-        in_channels=3,
-        out_channels=3)
-=======
     model = ModelPretrain(cfg.coordconv, cfg.coordconv_r)
     if cfg.phase == 'contours':
         model = ModelContours(model, cfg.checkpoint_path)
->>>>>>> tmp
 
     cfg.run_dir = run_dir
 
@@ -287,12 +252,10 @@ if __name__ == "__main__":
 
     p.add('--out-dir', required=True)
     p.add('--in-dir', required=True)
-<<<<<<< HEAD
     p.add('--checkpoint-path', default=None)
 
     cfg = p.parse_args()
 
-=======
     p.add(
         '--phase',
         required=True,
@@ -317,5 +280,4 @@ if __name__ == "__main__":
     # cfg.coordconv = True
     # cfg.coordconv_r = True
 
->>>>>>> tmp
     main(cfg)

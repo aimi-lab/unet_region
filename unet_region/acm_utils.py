@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from scipy import ndimage
 import skfmm
 import torch
@@ -7,6 +8,8 @@ from skimage import segmentation
 import torch.nn.functional as F
 from typing import Optional
 import math
+from scipy.stats import multivariate_normal
+import tqdm
 
 
 def make_1d_gauss(length, std, x0):
@@ -385,5 +388,145 @@ def acm_ls(phi,
 
     return phis
 
-def make_rbf(angles, skews, shape):
-    
+
+class RBFstore:
+    def __init__(self,
+                 center,
+                 n_angles,
+                 n_scales,
+                 n_skews,
+                 shape):
+        self.center = center
+        self.n_angles = n_angles
+        self.n_scales = n_scales
+        self.n_skews = n_skews
+        self.shape = shape
+
+        self.buffer_psi = self.build_psi()
+        self.buffer_z = self.build_z()
+
+    def __len__(self):
+
+        return self.n_angles * self.n_scales * self.n_skews
+
+    def build_z(self):
+        skews_x, skews_y = torch.meshgrid([torch.arange(self.n_skews),
+                                         torch.arange(self.n_skews)])
+        skews_x = skews_x.flatten()
+        skews_y = skews_y.flatten()
+        idx = torch.empty(skews_x.shape + (2,))
+        idx[..., 0] = skews_x
+        idx[..., 1] = skews_y
+
+        buffer = torch.stack([self.get_z(skews_x_idx, skews_y_idx)
+                              for skews_x_idx, skews_y_idx in idx])
+
+        return buffer
+
+    def build_psi(self):
+        angles, scales = torch.meshgrid([torch.arange(self.n_angles),
+                                         torch.arange(self.n_scales)])
+        angles = angles.flatten()
+        scales = scales.flatten()
+        idx = torch.empty(angles.shape + (2,))
+        idx[..., 0] = angles
+        idx[..., 1] = scales
+
+        buffer = torch.stack([self.get_psi(angle_idx, scale_idx)
+                              for angle_idx, scale_idx in idx])
+
+        return buffer
+
+    def get_z(self, skew_idx_x, skew_idx_y):
+        skew = torch.tensor((1 / self.n_skews * skew_idx_x,
+                             1 / self.n_skews * skew_idx_y))
+        # apply skew function
+        xc = torch.tensor((self.center[1], self.center[0])).float()
+        x, y = torch.meshgrid([torch.arange(self.shape[1]), torch.arange(self.shape[0])])
+        pos = torch.empty(x.shape + (2,))
+        pos[:, :, 0] = x
+        pos[:, :, 1] = y
+        z = (1 / math.pi) * torch.atan((pos - xc) @ skew) + \
+            (1 / 2)
+
+        return z
+
+    def get_psi(self, angle_idx, scale_idx):
+
+        angle = math.pi / (self.n_angles) * angle_idx
+        scale = np.max(self.shape) / (self.n_scales) * (scale_idx + 1)
+
+        rot = torch.tensor([[np.cos(angle), -np.sin(angle)],
+                            [np.sin(angle), np.cos(angle)]])
+        cov = torch.tensor(np.diag((np.max(self.shape), scale))).float()
+        cov = rot @ cov @ rot.t()
+        rv = multivariate_normal(mean=(self.center[1], self.center[0]),
+                                 cov=cov)
+        x, y = torch.meshgrid([torch.arange(self.shape[1]), torch.arange(self.shape[0])])
+        pos = torch.empty(x.shape + (2,))
+        pos[:, :, 0] = x
+        pos[:, :, 1] = y
+
+        psi = torch.tensor(rv.pdf(pos)).float()
+        psi = psi / psi.max()
+
+        return psi
+
+    def make_phi(self, r0, a):
+        angles, scales, skews = torch.meshgrid([torch.arange(self.n_angles),
+                                                torch.arange(self.n_scales),
+                                                torch.arange(self.n_skews)])
+        angles = angles.flatten()
+        scales = scales.flatten()
+        skews = skews.flatten()
+
+        idx = torch.empty(angles.shape + (3,))
+        idx[..., 0] = angles
+        idx[..., 1] = scales
+        idx[..., 2] = skews
+        import pdb; pdb.set_trace() ## DEBUG ##
+        r = torch.stack([a_ * self[idx[i, 0], idx[i, 1], idx[i, 2]]
+                         for i, a_ in enumerate(a)])
+
+        x, y = torch.meshgrid([
+            torch.arange(self.center[0], dtype=torch.float),
+            torch.arange(self.center[1], dtype=torch.float)
+        ])
+        x, y = torch.meshgrid([
+            torch.arange(self.shape[1], dtype=torch.float),
+            torch.arange(self.shape[0], dtype=torch.float)
+        ])
+        x = x - self.center[0]
+        y = y - self.center[1]
+
+        phi = torch.norm(torch.stack((x, y)), dim=0) - r
+
+
+def make_phi_rbf(center, r0, a, shape):
+    x, y = torch.meshgrid([
+        torch.arange(shape[1], dtype=torch.float),
+        torch.arange(shape[0], dtype=torch.float)
+    ])
+    x = torch.stack([x - center_[1] for center_ in center])
+    y = torch.stack([y - center_[0] for center_ in center])
+
+    theta = torch.atan2(x, y)
+    r = torch.stack([
+        torch.stack([
+            al * torch.sin((l + 1) * theta_ + alpha)
+            for l, al in enumerate(a_)
+        ]) for a_, theta_ in zip(a, theta)
+    ])
+
+    r += torch.stack([
+        torch.stack([
+            bl * torch.cos((l + 1) * theta_ + alpha)
+            for l, bl in enumerate(b_)
+        ]) for b_, theta_ in zip(b, theta)
+    ])
+    r = torch.sum(r, 1)
+    r += r0
+
+    phi = torch.norm(torch.stack((x, y)), dim=0) - r
+
+    return phi

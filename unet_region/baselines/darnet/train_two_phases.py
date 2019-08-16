@@ -5,28 +5,16 @@ from os.path import join as pjoin
 def main(cfg):
 
     # train with pascal
-<<<<<<< HEAD
     cfg.epochs = 50
     print('Pretraining with PASCAL for {} epochs'.format(cfg.epochs))
     cfg.phase = 'pascal'
     cfg.in_dir = cfg.in_dir_pascal
     cfg = train.main(cfg)
-=======
-    # cfg.epochs = 50
-    # print('Pretraining with PASCAL for {} epochs'.format(cfg.epochs))
-    # cfg.phase = 'pascal'
-    # cfg.in_dir = cfg.in_dir_pascal
-    # cfg = train.main(cfg)
->>>>>>> tmp
 
     # train without contours
     cfg.epochs = 100
     print('Pretraining with real data for {} epochs'.format(cfg.epochs))
-<<<<<<< HEAD
     cfg.checkpoint_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint_ls.pth.tar')
-=======
-    # cfg.checkpoint_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint_ls.pth.tar')
->>>>>>> tmp
     cfg.phase = 'data'
     cfg.in_dir = cfg.in_dir_medical
     cfg = train.main(cfg)
@@ -45,10 +33,7 @@ if __name__ == "__main__":
     p = params.get_params()
 
     p.add('--out-dir', required=True)
-<<<<<<< HEAD
     p.add('--in-dir-pascal', required=True)
-=======
->>>>>>> tmp
     p.add('--in-dir-medical', required=True)
     cfg = p.parse_args()
 
