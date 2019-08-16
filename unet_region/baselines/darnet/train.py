@@ -13,7 +13,7 @@ from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import numpy as np
 import pandas as pd
-from unet_region.baselines.darnet.models import DRNContours
+from unet_region.baselines.darnet.drn_contours import DRNContours
 from unet_region.baselines.darnet.trainer import Trainer
 from unet_region.my_augmenters import rescale_augmenter
 from unet_region.baselines.unet import params

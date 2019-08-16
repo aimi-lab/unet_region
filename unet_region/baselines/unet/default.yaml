@@ -1,0 +1,65 @@
+frames: []
+
+# when frames are given (few-shot), generate dataloader of size
+n-patches: 1000
+
+data-type: pascal
+
+epochs-pretrain: 200
+lr-decay: 0.3
+
+# optimizer
+lr: 0.0003
+momentum: 0.9
+eps: 1e-08
+weight-decay: 0.0004
+
+# dataset
+ds-split: 0.8
+
+# batch
+batch-size: 2
+batch-norm: True
+
+# dataloader
+seed: 1
+n-workers: 0
+cuda: False
+fake-len: 200
+
+# coordconv layers
+coordconv: False
+coordconv-r: False
+
+# network input size
+in-shape: 224
+
+# relative size of patch within original frame
+patch-rel-size: 0.3
+
+# gaussian noise
+aug-noise: 0.1
+
+# image flipping probability
+aug-flip-proba: 0.5
+aug-some: 2
+
+# compute loss on square of relative size
+loss-size: 1.
+loss-lambda: 2.
+
+# save training images examples 
+save-train-examples: True
+n-save-train-examples: 10
+
+# fixed radius masks
+fix-radius: 0.05
+
+# for DELSE
+init-radius: 0.02
+
+tsdf-thr: 30
+
+alpha: 100
+beta: 1
+n-iters: 5
