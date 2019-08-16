@@ -101,8 +101,6 @@ class Trainer:
                                                self.lr_scheduler.get_lr()[-1],
                                                epoch)
 
-                        break
-
                     pbar.close()
                     self.writer.add_scalar('{}/loss'.format(phase),
                                            loss_, epoch)
@@ -209,8 +207,8 @@ def make_preview_grid(images,
                     rr, cc = draw.circle(l[1], l[0], radius=2, shape=im_.shape[:2])
                     im_[rr, cc, ...] = c[:3]
                 # plot polygon
-                import pdb; pdb.set_trace() ## DEBUG ##
-                rr, cc = draw.polygon_perimeter(contour_[:, 1], contour_[:, 0], shape=im_.shape[:2], clip=True)
+                rr, cc = draw.polygon_perimeter(contour_[:, 1], contour_[:, 0],
+                                                shape=im_.shape[:2], clip=True)
                 im_[rr, cc, ...] = c[:3]
 
         ims.append(im_)

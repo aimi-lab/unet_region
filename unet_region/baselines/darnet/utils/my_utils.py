@@ -339,10 +339,9 @@ def process_truth_dar(sample, L, init_rho_rel):
 
     sample['interp_radii'] = interp_radii
     sample['init_contour_origin'] = rc
-    sample['interp_xy'] = interp_coords
+    sample['interp_xy'] = interp_coords.T
     sample['interp_angles'] = angles
     sample['delta_angles'] = delta_angles
-
 
     # sample['interp_radii'] = interp_radii[..., np.newaxis, np.newaxis]
     # sample['init_contour_origin'] = rc[..., np.newaxis, np.newaxis]
@@ -356,12 +355,12 @@ def process_truth_dar(sample, L, init_rho_rel):
     kappa = data.copy()
     kappa[truth == 0] = 0
 
-    # sample['label/edt_D'] = data[..., np.newaxis]
-    # sample['label/edt_beta'] = beta[..., np.newaxis]
-    # sample['label/edt_kappa'] = kappa[..., np.newaxis]
-    sample['label/edt_D'] = data
-    sample['label/edt_beta'] = beta
-    sample['label/edt_kappa'] = kappa
+    sample['label/edt_D'] = data[..., np.newaxis]
+    sample['label/edt_beta'] = beta[..., np.newaxis]
+    sample['label/edt_kappa'] = kappa[..., np.newaxis]
+    # sample['label/edt_D'] = data
+    # sample['label/edt_beta'] = beta
+    # sample['label/edt_kappa'] = kappa
 
     init_rho = init_rho_rel * np.max(truth.shape)
     # sample['init_contour_radii'] = np.array(

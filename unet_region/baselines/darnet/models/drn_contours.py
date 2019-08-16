@@ -184,7 +184,6 @@ class DRNContours(nn.Module):
 
     def forward(self, x):
         x = self.base(x)
-        import pdb; pdb.set_trace() ## DEBUG ##
         x = self.upconv1(x)
         x = self.upconv2(x)
         x = self.upconv3(x)

@@ -34,8 +34,12 @@ dirs = {
     # ['Dataset31', 'Dataset30', 'Dataset32', 'Dataset33', 'Dataset34']
     # 'Dataset20_2019-08-06_11-46':
     # ['Dataset21', 'Dataset20', 'Dataset22', 'Dataset23', 'Dataset24', 'Dataset25'],
-    'Dataset20_2019-08-06_09-55':
-    ['Dataset20']
+    # 'Dataset20_2019-08-06_09-55':
+    # ['Dataset20']
+    # 'pascal_2019-08-05_11-32':
+    # ['Dataset31', 'Dataset32', 'Dataset33'],
+    'pascal_2019-08-05_11-31':
+    ['Dataset31', 'Dataset32', 'Dataset33']
     # ['Dataset21', 'Dataset20', 'Dataset22', 'Dataset23', 'Dataset24', 'Dataset25']
 }
 
@@ -65,5 +69,8 @@ if __name__ == "__main__":
     p.add('--data-dir')
     p.add('--preds-dir')
     cfg = p.parse_args()
+
+    # cfg.runs_dir = '/home/ubelix/runs/unet_region'
+    # cfg.data_dir = '/home/ubelix/data'
 
     main(cfg)

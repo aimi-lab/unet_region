@@ -24,9 +24,9 @@ class DistanceLossFast(nn.Module):
                 debug_hist=False):
         result = evolve_active_rays_fast(
             rho_init,
-            beta,
-            data,
-            kappa,
+            beta.squeeze(),
+            data.squeeze(),
+            kappa.squeeze(),
             theta,
             delta_theta,
             rho_target,
@@ -43,7 +43,7 @@ class DistanceLossFast(nn.Module):
         rho_diff = torch.nn.functional.l1_loss(rho, rho_target.squeeze())
 
         with torch.no_grad():
-            _, height, width = data.size()
+            _, height, width = data.squeeze().size()
             # Join two tensors of (N, L) to (N, L, 2)
             # Then add the origin (N, 1, 2) to broadcast
             rho_cos_theta = rho * torch.cos(theta)

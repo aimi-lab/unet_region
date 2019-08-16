@@ -9,7 +9,7 @@ import matplotlib as mpl
 from unet_region.plots.data_paths import paths
 
 root_dir = '/home/ubelix/runs/unet_region'
-out_dir = '/home/ubelix/data/medical-labeling/unet_region'
+out_dir = '/home/ubelix/runs/unet_region'
 seq_types = ['tweezer', 'cochlea', 'slitlamp', 'brain']
 
 
@@ -37,7 +37,6 @@ def make_dataframe(root_dir, run_dir, dirs, fname, method):
         df = pd.concat([df], keys=[method], names=['method'], axis=1)
         pds.append(df)
     return pds
-
 
 
 dfs = []
@@ -77,5 +76,7 @@ for m, a in zip(metrics_to_plot, ax):
 fig.tight_layout()
 # Put the legend out of the figure
 
-# fig.savefig(pjoin(out_dir, 'all.png'))
-fig.show()
+path = pjoin(out_dir, 'all.png')
+print('saving figure to {}'.format(path))
+fig.savefig(path)
+# fig.show()

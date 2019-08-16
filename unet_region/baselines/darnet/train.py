@@ -17,7 +17,7 @@ import pandas as pd
 from unet_region.baselines.darnet.models.drn_contours import DRNContours
 from unet_region.baselines.darnet.losses.losses import DistanceLossFast
 from unet_region.baselines.darnet.trainer import Trainer
-from unet_region.baselines.unet import params
+from unet_region.baselines.darnet import params
 from unet_region.my_augmenters import rescale_augmenter, Normalize
 from unet_region.baselines.darnet.utils import my_utils as utls
 
@@ -80,6 +80,9 @@ class ModelPretrain(torch.nn.Module):
         output = self.net(sample['image'])
         assert len(output) == 3 or len(output) == 6
         beta, data, kappa = output[-3:]
+        beta = beta.unsqueeze(1)
+        kappa = kappa.unsqueeze(1)
+        data = data.unsqueeze(1)
         loss = self.l1_loss_func(beta, sample['label/edt_beta'])
         loss += self.l1_loss_func(data, sample['label/edt_D'])
         loss += self.l1_loss_func(
@@ -87,6 +90,9 @@ class ModelPretrain(torch.nn.Module):
 
         if len(output) == 6:
             beta0, data0, kappa0 = output[:3]
+            beta0 = beta0.unsqueeze(1)
+            kappa0 = kappa0.unsqueeze(1)
+            data0 = data0.unsqueeze(1)
             loss += self.l1_loss_func(
                 beta0, sample['label/edt_beta'])
             loss += self.l1_loss_func(
@@ -179,7 +185,8 @@ def main(cfg):
         num_workers=cfg.n_workers,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn,
-        sampler=train_sampler)
+        sampler=train_sampler,
+        drop_last=True)
 
     # each batch will give same locations / augmentations
     val_loader = torch.utils.data.DataLoader(
@@ -188,7 +195,8 @@ def main(cfg):
         batch_size=cfg.batch_size,
         collate_fn=loader.collate_fn,
         worker_init_fn=loader.worker_init_fn_dummy,
-        sampler=valid_sampler)
+        sampler=valid_sampler,
+        drop_last=True)
 
     # loader for previewing images
     prev_sampler = SubsetRandomSampler(val_indices)
@@ -206,7 +214,6 @@ def main(cfg):
         'prev': prev_loader
     }
 
-    import pdb; pdb.set_trace() ## DEBUG ##
     model = ModelPretrain(cfg.coordconv, cfg.coordconv_r)
     if cfg.phase == 'contours':
         model = ModelContours(model, cfg.checkpoint_path)
@@ -244,11 +251,11 @@ if __name__ == "__main__":
     #       default=None)
     # p.add('--phase')
     # cfg = p.parse_args()
-    # root = '/home/ubelix/data/VOCdevkit/'
     # cfg.n_workers = 0
-    # cfg.in_dir = root
+    # cfg.in_dir = '/home/ubelix/data/medical-labeling/Dataset00'
     # cfg.out_dir = '/home/ubelix/runs/scratch'
-    # cfg.phase = 'pascal'
+    # cfg.checkpoint_path = '/home/ubelix/runs/darnet/Dataset00_2019-08-09_13-05/checkpoints/checkpoint_ls.pth.tar'
+    # cfg.phase = 'contours'
 
     # cfg.coordconv = True
     # cfg.coordconv_r = True

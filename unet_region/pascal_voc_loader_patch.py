@@ -87,7 +87,7 @@ class pascalVOCLoaderPatch(VOC2012):
         for k in out.keys():
             if (k not in self.ignore_collate):
                 out[k] = np.array(out[k])
-                out[k] = out[k].transpose((0, -1, 1, 2))
+                out[k] = np.rollaxis(out[k], -1, 1)
                 out[k] = torch.from_numpy(out[k]).float()
 
         return out
