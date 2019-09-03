@@ -1,32 +1,18 @@
 import munch
 import logging
-<<<<<<< HEAD
-import pytorch_utils.utils as utls
-=======
 import unet_region.utils as utls
->>>>>>> tmp
 from tensorboardX import SummaryWriter
 from torchvision import utils as tutls
 import torch
 import torch.optim as optim
 import tqdm
 from os.path import join as pjoin
-<<<<<<< HEAD
-from loss_dsac import LossDSAC
 from skimage import transform, draw, util, segmentation
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image, ImageFont, ImageDraw
-from loss_direct import LossDirect
-from loss_t import LossT
-from acm_utils import acm_ls, make_init_ls_gaussian
-=======
-from skimage import transform, draw, util, segmentation
+from unet_region.acm_utils import acm_ls
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 from PIL import Image, ImageFont, ImageDraw
->>>>>>> tmp
 
 
 class Trainer:
@@ -40,13 +26,6 @@ class Trainer:
 
         self.model = self.model.to(self.device)
 
-<<<<<<< HEAD
-        self.criterion_data = torch.nn.SmoothL1Loss()
-        self.criterion_beta = torch.nn.SmoothL1Loss()
-        self.criterion_kappa = torch.nn.SmoothL1Loss()
-
-=======
->>>>>>> tmp
         utls.setup_logging(run_dir)
         self.logger = logging.getLogger('coord_net')
         self.writer = SummaryWriter(run_dir)
@@ -57,15 +36,6 @@ class Trainer:
             for k, v in batch.items()
         }
 
-<<<<<<< HEAD
-        if (cfg.checkpoint_path is not None):
-            self.logger.info('Loading checkpoint: {}'.format(
-                cfg.checkpoint_path))
-            checkpoint = torch.load(cfg.checkpoint_path)
-            self.model.load_state_dict(checkpoint['state_dict'])
-
-=======
->>>>>>> tmp
         self.optimizer = optim.SGD(
             model.parameters(),
             lr=self.cfg.lr,
@@ -78,18 +48,9 @@ class Trainer:
 
         self.logger.info('run_dir: {}'.format(self.run_dir))
 
-<<<<<<< HEAD
         self.acm_fun = lambda phi, v, m: acm_ls(
             phi, v, m, 1, cfg.n_iters, vec_field=True)
 
-    def train(self):
-
-        best_loss = 0.
-        for epoch in range(self.cfg.epochs_pretrain):
-
-            self.logger.info('Epoch {}/{}'.format(epoch + 1,
-                                                  self.cfg.epochs_pretrain))
-=======
     def train(self):
 
         best_loss = 0.
@@ -97,8 +58,6 @@ class Trainer:
 
             self.logger.info('Epoch {}/{}'.format(epoch + 1,
                                                   self.cfg.epochs))
->>>>>>> tmp
-
             # Each epoch has a training and validation phase
             for phase in self.dataloaders.keys():
                 if phase == 'train':
@@ -106,13 +65,10 @@ class Trainer:
                 else:
                     self.model.eval()  # Set model to evaluate mode
 
-<<<<<<< HEAD
                 running_loss_data = 0.0
                 running_loss_beta = 0.0
                 running_loss_kappa = 0.0
-=======
                 running_loss = 0.0
->>>>>>> tmp
 
                 if (phase in ['train', 'val']):
                     # Iterate over data.
@@ -127,52 +83,14 @@ class Trainer:
                         # forward
                         # track history if only in train
                         with torch.set_grad_enabled(phase == 'train'):
-<<<<<<< HEAD
-                            out_data, out_beta, out_kappa = self.model(
-                                data['image'])
-
-                            loss_data = self.criterion_data(
-                                out_data, data['label/edt_D'])
-                            loss_beta = self.criterion_beta(
-                                out_beta, data['label/edt_beta'])
-                            loss_kappa = self.criterion_kappa(
-                                out_kappa, data['label/edt_kappa'])
-
-                            # backward + optimize only if in training phase
-                            if phase == 'train':
-                                loss_data.backward(retain_graph=True)
-                                loss_beta.backward(retain_graph=True)
-                                loss_kappa.backward()
-=======
                             loss, out = self.model(data)
 
                             # backward + optimize only if in training phase
                             if phase == 'train':
                                 loss.backward()
->>>>>>> tmp
-
                                 self.optimizer.step()
                                 self.lr_scheduler.step()
 
-<<<<<<< HEAD
-                        running_loss_data += loss_data.cpu().detach().item()
-                        running_loss_beta += loss_beta.cpu().detach().item()
-                        running_loss_kappa += loss_kappa.cpu().detach().item()
-                        loss_data_ = running_loss_data / (
-                            (i + 1) * self.cfg.batch_size)
-                        loss_beta_ = running_loss_beta / (
-                            (i + 1) * self.cfg.batch_size)
-                        loss_kappa_ = running_loss_kappa / (
-                            (i + 1) * self.cfg.batch_size)
-                        loss_ = loss_data_ + loss_beta_ + loss_kappa_
-
-                        pbar.set_description(
-                            '[{}] : L_data {:.4f}, L_beta {:.4f}, L_kappa {:.4f} L_tot {:.4f}'
-                            .format(phase,
-                                    loss_data_,
-                                    loss_beta_,
-                                    loss_kappa_,
-=======
                         running_loss += loss.cpu().detach().item()
 
                         loss_ = running_loss / (
@@ -181,7 +99,6 @@ class Trainer:
                         pbar.set_description(
                             '[{}] : Loss {:.4f}'
                             .format(phase,
->>>>>>> tmp
                                     loss_))
                         pbar.update(1)
                         samp_ += 1
@@ -189,44 +106,15 @@ class Trainer:
                                                self.lr_scheduler.get_lr()[-1],
                                                epoch)
 
-<<<<<<< HEAD
-
-                    pbar.close()
-                    self.writer.add_scalar('{}/loss_data'.format(phase),
-                                           loss_data_, epoch)
-                    self.writer.add_scalar('{}/loss_beta'.format(phase),
-                                           loss_beta_, epoch)
-                    self.writer.add_scalar('{}/loss_kappa'.format(phase),
-                                           loss_kappa_,
-                                           epoch)
-                    self.writer.add_scalar('{}/loss_tot'.format(phase), loss_,
-                                           epoch)
-=======
                     pbar.close()
                     self.writer.add_scalar('{}/loss'.format(phase),
                                            loss_, epoch)
->>>>>>> tmp
-
                 # make preview images
-                if phase == 'prev':
+                if phase == 'test':
                     with torch.no_grad():
 
                         data = next(iter(self.dataloaders[phase]))
                         data = self.batch_to_device(data)
-<<<<<<< HEAD
-                        out_data, out_beta, out_kappa = self.model(data['image'])
-
-                        img = make_preview_grid(
-                            data, {
-                                'truth': data['label/segmentation'],
-                                'data': out_data,
-                                'data_truth': data['label/edt_D'],
-                                'kappa': out_kappa,
-                                'kappa_truth': data['label/edt_kappa'],
-                                'beta': out_beta,
-                                'beta_truth': data['label/edt_beta'],
-                            })
-=======
                         _, out = self.model(data)
 
                         images = np.array(data['image_unnormalized'])
@@ -251,7 +139,7 @@ class Trainer:
                             },
                             contours=contours,
                             font='../../sans-serif.ttf')
->>>>>>> tmp
+
                         self.writer.add_image('test/img',
                                               np.moveaxis(img, -1, 0), epoch)
 
@@ -281,14 +169,6 @@ def normalize_map(a):
     return a
 
 
-<<<<<<< HEAD
-def make_preview_grid(data,
-                      outputs,
-                      color_truth=(1, 0, 0),
-                      color_center=(0, 1, 0)):
-
-    batch_size = data['image'].shape[0]
-=======
 def make_preview_grid(images,
                       outputs,
                       contours=None,
@@ -296,55 +176,39 @@ def make_preview_grid(images,
                       font='sans-serif.ttf'):
 
     batch_size = images.shape[0]
->>>>>>> tmp
 
     ims = []
 
     cmap = plt.get_cmap('viridis')
 
     outputs_maps = {
-<<<<<<< HEAD
-        k: np.zeros((batch_size, data['image'].shape[-1],
-                     data['image'].shape[-2], 3))
-=======
         k: np.zeros((batch_size, images.shape[-1],
                      images.shape[-2], 3))
->>>>>>> tmp
         for k in outputs.keys()
     }
     outputs_ranges = {k: np.zeros((batch_size, 2)) for k in outputs.keys()}
 
     # make padded images
-<<<<<<< HEAD
-    pw = int(0.02 * data['image'].shape[-1])
-=======
     pw = int(0.02 * images.shape[-1])
->>>>>>> tmp
 
     my_pad = lambda x: util.pad(
         x, ((pw, pw), (pw, pw), (0, 0)), mode='constant', constant_values=1.)
 
     for i in range(batch_size):
-<<<<<<< HEAD
-        im_ = data['image_unnormalized'][i]
-=======
         im_ = np.rollaxis(images[i].detach().cpu().numpy(), 0, start=3)
->>>>>>> tmp
 
         # draw center pixel
         rr, cc = draw.circle(
             im_.shape[0] / 2 + 0.5, im_.shape[1] / 2 + 0.5, radius=1)
         im_[rr, cc, ...] = color_center
 
-<<<<<<< HEAD
-=======
         if(contours is not None):
             color = iter(cm.rainbow(np.linspace(0, 1, len(contours.keys()))))
             for j, k in enumerate(contours.keys()):
                 # plot each point
                 contour_ = contours[k][i, ...].squeeze().detach().cpu().numpy()
                 c = next(color)
-                for l in contour_.T:
+                for l in contour_:
                     rr, cc = draw.circle(l[1], l[0], radius=2, shape=im_.shape[:2])
                     im_[rr, cc, ...] = c[:3]
                 # plot polygon
@@ -352,7 +216,6 @@ def make_preview_grid(images,
                                                 shape=im_.shape[:2], clip=True)
                 im_[rr, cc, ...] = c[:3]
 
->>>>>>> tmp
         ims.append(im_)
 
         for k in outputs.keys():
@@ -372,11 +235,7 @@ def make_preview_grid(images,
     header = Image.fromarray((255 * np.ones(
         (ims[0].shape[0], all_.shape[1], 3))).astype(np.uint8))
     drawer = ImageDraw.Draw(header)
-<<<<<<< HEAD
-    font = ImageFont.truetype("sans-serif.ttf", 25)
-=======
     font = ImageFont.truetype(font, 25)
->>>>>>> tmp
     text_header = ''
     for k in outputs_maps.keys():
         text_header += '{} / '.format(k)

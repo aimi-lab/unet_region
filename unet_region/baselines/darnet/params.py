@@ -1,6 +1,4 @@
 import configargparse
-<<<<<<< HEAD
-=======
 import argparse
 
 def str2bool(v):
@@ -12,8 +10,6 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
->>>>>>> tmp
-
 def get_params():
     p = configargparse.ArgParser(
         config_file_parser_class=configargparse.YAMLConfigFileParser,
@@ -24,17 +20,11 @@ def get_params():
     p.add('--data-type')
     p.add('--frames', action='append', type=int)
     p.add('--n-patches', type=int)
-<<<<<<< HEAD
-    p.add('--epochs-pretrain', type=int)
-    p.add('--lr-decay', type=float)
-    p.add('--lr', type=float)
-=======
     p.add('--epochs', type=int)
     p.add('--lr-decay', type=float)
     p.add('--lr', type=float)
     p.add('--patience', type=int)
     p.add('--gamma', type=float)
->>>>>>> tmp
     p.add('--momentum', type=float)
     p.add('--eps', type=float)
     p.add('--ds-split', type=float)
@@ -48,15 +38,10 @@ def get_params():
     p.add('--cuda', default=False, action='store_true')
     p.add('--save-train-examples', default=True, action='store_true')
     p.add('--n-save-train-examples', type=int)
-<<<<<<< HEAD
-    p.add('--coordconv', type=bool)
-    p.add('--coordconv-r', type=bool)
-=======
     p.add_argument("--coordconv", type=str2bool, nargs='?',
                         const=True)
     p.add_argument("--coordconv-r", type=str2bool, nargs='?',
                         const=True)
->>>>>>> tmp
     p.add('--in-shape', type=int)
     p.add('--loss-size', type=float)
     p.add('--loss-lambda', type=float)
@@ -68,10 +53,7 @@ def get_params():
     p.add('--fix-radius', type=float)
 
     p.add('--init-radius', type=float)
-<<<<<<< HEAD
-=======
     p.add('--n-nodes', type=float)
->>>>>>> tmp
     p.add('--tsdf-thr', type=int)
     p.add('--n-iters', type=int)
     p.add('--alpha', type=float)

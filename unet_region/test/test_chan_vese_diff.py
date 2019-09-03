@@ -13,7 +13,8 @@ import test
 from unet_region import acm_utils as autls
 from scipy import ndimage
 import math
-from scipy.ndimage import distance_transform_edt
+from unet_region.bspline import Bspline
+
 
 def approx_heaviside(s, eps):
     return 0.5 * (1 + (2 / math.pi) * torch.atan(s / eps))
@@ -49,39 +50,20 @@ img_gray = color.rgb2gray(img)
 truth = resize(truth, (out_size, out_size))
 truth_contour = (segmentation.find_boundaries(truth > 0))
 
-rbfstore = autls.RBFstore((p_x, p_y),
-                          n_angles=20,
-                          n_scales=20,
-                          n_skews=4,
-                          shape=truth.shape)
-
-a = torch.zeros(len(rbfstore))
-r0 = torch.tensor([0.])
-out = autls.acwe_rbf(torch.from_numpy(truth).float(),
-                     rbfstore,
-                     r0,
-                     a,
-                     step_size=1,
-                     n_iters=60)
-
 rr, cc = draw.circle(p_y, p_x, 5, shape=img.shape)
 img[rr, cc, :] = (0, 1, 0)
 
-rr, cc = np.where((segmentation.find_boundaries(truth)))
-img[rr, cc, :] = (0, 0, 1)
+r0 = 10
+xc = torch.tensor((p_x, p_y)).float()
+n_rays = 30
+r = torch.tensor(n_rays*[r0])
+pts = autls.rays_to_xy(r, xc)
+pts = pts.detach().cpu().numpy()
+r = r.detach().cpu().numpy()
 
-rr, cc = np.where((segmentation.find_boundaries(out['phi'].detach().cpu().numpy() < 0)))
-img[rr, cc, :] = (1, 0, 0)
+bspline = Bspline(r, 1)
+y = bspline(0)
 
-fig, ax = plt.subplots(3, 2)
-ax = ax.flatten()
-ax[0].imshow(img)
-ax[1].imshow(truth)
-ax[2].plot(out['E'], 'bo-')
-ax[2].set_ylabel('Energy')
-ax[3].imshow(out['phi'])
-ax[4].stem(out['a'], use_line_collection=True)
-ax[4].set_ylabel('a')
+plt.plot(pts[:, 0], pts[:, 1], 'bo--')
+plt.grid()
 plt.show()
-
-print(len(rbfstore))

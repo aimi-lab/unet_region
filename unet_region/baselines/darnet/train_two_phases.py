@@ -4,25 +4,19 @@ from os.path import join as pjoin
 
 def main(cfg):
 
-    # train with pascal
-    cfg.epochs = 50
-    print('Pretraining with PASCAL for {} epochs'.format(cfg.epochs))
-    cfg.phase = 'pascal'
-    cfg.in_dir = cfg.in_dir_pascal
-    cfg = train.main(cfg)
-
     # train without contours
     cfg.epochs = 100
     print('Pretraining with real data for {} epochs'.format(cfg.epochs))
-    cfg.checkpoint_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint_ls.pth.tar')
+    # cfg.checkpoint_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint_ls.pth.tar')
     cfg.phase = 'data'
-    cfg.in_dir = cfg.in_dir_medical
+    cfg.in_dir = cfg.in_dir
     cfg = train.main(cfg)
 
     # train with contours
     print('Training contours for {} epochs'.format(cfg.epochs))
     cfg.checkpoint_path = pjoin(cfg.run_dir, 'checkpoints', 'checkpoint_ls.pth.tar')
-    cfg.epochs = 100
+    cfg.phase = 'contours'
+    cfg.epochs = 20
     cfg = train.main(cfg)
 
 
@@ -33,8 +27,11 @@ if __name__ == "__main__":
     p = params.get_params()
 
     p.add('--out-dir', required=True)
-    p.add('--in-dir-pascal', required=True)
-    p.add('--in-dir-medical', required=True)
+    p.add('--in-dir', required=True)
+    p.add('--in-dirs-test', required=True)
+    p.add('-in-dirs-test', nargs='+', required=True)
+
+    p.add('--checkpoint-path', default=None)
     cfg = p.parse_args()
 
     # p.add('--out-dir')

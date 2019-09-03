@@ -23,14 +23,14 @@ from unet_region.baselines.darnet.utils import my_utils as utls
 
 
 class ModelContours(torch.nn.Module):
-    def __init__(self, network, restore):
+    def __init__(self, network, restore, ac_iters):
         super(ModelContours, self).__init__()
         self.net = network
         print("Loading checkpoint from {}".format(restore))
         checkpoint = torch.load(restore, map_location='cpu')
         print("Loaded checkpoint")
         self.net.load_state_dict(checkpoint)
-        self.distance_loss = DistanceLossFast()
+        self.distance_loss = DistanceLossFast(max_steps=ac_iters)
 
     def forward(self, sample):
         loss, out = self.net(sample)
@@ -127,45 +127,27 @@ def main(cfg):
         iaa.Resize(in_shape), rescale_augmenter
     ])
 
-    if cfg.data_type == 'pascal':
-        loader = pascalVOCLoaderPatch(
-            pjoin(cfg.in_dir, 'VOC2012'),
-            patch_rel_size=cfg.patch_rel_size,
-            augmentations=transf)
-    elif cfg.data_type == 'medical':
-        loader = PatchLoader(
-            pjoin(cfg.in_dir),
-            'hand',
-            fake_len=cfg.fake_len,
-            make_opt_box=False,
-            fix_frames=cfg.frames,
-            augmentation=transf)
-    else:
-        raise Exception('data-type must be pascal or medical')
-
     normalization = Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-    if cfg.phase == 'pascal':
-        loader = pascalVOCLoaderPatch(
-            cfg.in_dir,
-            patch_rel_size=cfg.patch_rel_size,
-            normalization=normalization,
-            late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
-                                                     init_radius),
-            augmentations=transf)
-    elif (cfg.phase == 'data' or cfg.phase == 'contours'):
-        loader = PatchLoader(
-            cfg.in_dir,
-            'hand',
-            fake_len=cfg.fake_len,
-            late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
-                                                     init_radius),
-            fix_frames=cfg.frames,
-            normalization=normalization,
-            augmentation=transf)
-    else:
-        raise Exception('phase must be pascal, data, or contours')
+    loader = PatchLoader(
+        cfg.in_dir,
+        'hand',
+        fake_len=cfg.fake_len,
+        late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
+                                                    init_radius),
+        fix_frames=cfg.frames,
+        normalization=normalization,
+        augmentation=transf)
+
+    test_loaders = [PatchLoader(
+        dir_,
+        'hand',
+        fake_len=cfg.fake_len,
+        late_fn=lambda y: utls.process_truth_dar(y, cfg.n_nodes, cfg.
+                                                    init_radius),
+        normalization=normalization,
+        augmentation=transf) for dir_ in cfg.in_dirs_test]
 
     # Creating data indices for training and validation splits:
     validation_split = 1 - cfg.ds_split
@@ -215,24 +197,24 @@ def main(cfg):
         drop_last=True)
 
     # loader for previewing images
-    prev_sampler = SubsetRandomSampler(val_indices)
-    prev_loader = torch.utils.data.DataLoader(
-        loader,
+    test_loader = torch.utils.data.ConcatDataset(test_loaders)
+    test_loader = torch.utils.data.DataLoader(
+        test_loader,
         num_workers=cfg.n_workers,
         collate_fn=loader.collate_fn,
-        sampler=prev_sampler,
         batch_size=4,
+        shuffle=True,
         drop_last=True)
 
     dataloaders = {
         'train': train_loader,
         'val': val_loader,
-        'prev': prev_loader
+        'test': test_loader
     }
 
     model = ModelPretrain(cfg.coordconv, cfg.coordconv_r)
     if cfg.phase == 'contours':
-        model = ModelContours(model, cfg.checkpoint_path)
+        model = ModelContours(model, cfg.checkpoint_path, ac_iters=cfg.n_iters)
 
     cfg.run_dir = run_dir
 
@@ -254,15 +236,13 @@ if __name__ == "__main__":
     p.add('--in-dir', required=True)
     p.add('--checkpoint-path', default=None)
 
-    cfg = p.parse_args()
-
+    p.add('--in-dirs-test', nargs='+', type=str, required=True)
     p.add(
         '--phase',
         required=True,
         help=
         'pascal (pretrain), data (pretrain), contours. Adequate values for in-dir and checkpoint-path must be provided'
     )
-    p.add('--checkpoint-path', default=None)
     cfg = p.parse_args()
 
     # p.add('--out-dir')

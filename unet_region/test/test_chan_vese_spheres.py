@@ -27,22 +27,22 @@ out_size = 256
 #     pjoin(root_dir, 'Dataset20/ground_truth-frames/frame_0030.png'))
 # p_x, p_y = 143, 132
 
-# img = io.imread(pjoin(root_dir, 'Dataset01/input-frames/frame_0150.png'))
-# truth = (io.imread(
-#     pjoin(root_dir, 'Dataset01/ground_truth-frames/frame_0150.png'))[..., 0] > 0).astype(float)
-# p_x, p_y = 190, 100
+img = io.imread(pjoin(root_dir, 'Dataset01/input-frames/frame_0150.png'))
+truth = (io.imread(
+    pjoin(root_dir, 'Dataset01/ground_truth-frames/frame_0150.png'))[..., 0] > 0).astype(float)
+p_x, p_y = 190, 100
 
 # img = io.imread(pjoin(root_dir, 'Dataset30/input-frames/frame_0075.png'))[..., :3]
 # truth = (io.imread(
 #     pjoin(root_dir, 'Dataset30/ground_truth-frames/frame_0075.png'))[..., 0] > 0).astype(float)
 # p_x, p_y = 150, 110
 
-p_x, p_y = 190, 100
-rr, cc = draw.ellipse(p_y, p_x, 40, 20, shape=(out_size, out_size), rotation=15)
-img = np.zeros((out_size, out_size, 3))
-img[rr, cc, ...] = 1
-truth = np.zeros((out_size, out_size))
-truth[rr, cc] = 1
+# p_x, p_y = 190, 100
+# rr, cc = draw.ellipse(p_y, p_x, 40, 20, shape=(out_size, out_size), rotation=15)
+# img = np.zeros((out_size, out_size, 3))
+# img[rr, cc, ...] = 1
+# truth = np.zeros((out_size, out_size))
+# truth[rr, cc] = 1
 
 img = resize(img, (out_size, out_size))
 img_gray = color.rgb2gray(img)
@@ -54,22 +54,23 @@ img[rr, cc, :] = (0, 1, 0)
 
 data = torch.tensor(gaussian(truth, sigma=3)[None, ...]).float()
 r0 = torch.tensor([10.])[None, ...]
-N = 5
-nu = 5.
-step_size = 0.01
-step_size_phase = 0.5
-decay = 0.96
-tol = 0.0001
+N = 20
+nu = 0.
+step_size = 0.001
+step_size_phase = 0.001
+decay = 1.
+# tol = 0.0001
+tol = 0.
 n_iter = 400
 a = torch.zeros(1, N)
 b = torch.zeros(1, N)
-alpha = torch.tensor([0.])[None, ...]
-# alpha = torch.zeros(1, N)
-# beta = torch.zeros(1, N)
+alpha = torch.zeros(1, N)
+# alpha = torch.tensor([0.])[None, ...]
+
 center = np.array((p_x, p_y))[None, ...]
-lambda_1 = 10
+lambda_1 = 1
 lambda_2 = 1
-r0[0] = 20.
+r0[0] = 10.
 # a[0, 3] = 12.
 # b[0, 0] = 10
 phi = autls.make_phi_spheres(center, r0, a, b, alpha, truth.shape)
@@ -93,8 +94,9 @@ img0 = img.copy()
 img0[phi_boundary[0, ...], :] = (1, 0, 0)
 
 img_last = img.copy()
-phi_new_boundary = segmentation.find_boundaries(out['phi'].detach().cpu().numpy() < 0)
-img_last[phi_new_boundary[0, ...], :] = (0, 0, 1)
+rr, cc = np.where(segmentation.find_boundaries(out['phi'].detach().cpu().numpy()[0, ...] < 0))
+
+img_last[rr, cc, :] = (0, 0, 1)
 
 fig, ax = plt.subplots(2, 2)
 fig.suptitle('At last iter. {}'.format(len(out['phi_history'])))

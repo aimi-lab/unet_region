@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from typing import Optional
 import math
 from scipy.stats import multivariate_normal
+from unet_region import itertools as itutls
 import tqdm
 
 
@@ -97,16 +98,16 @@ def make_phi_spheres(center, r0, a, b, alpha, shape):
     theta = torch.atan2(x, y)
     r = torch.stack([
         torch.stack([
-            al * torch.sin((l + 1) * theta_ + alpha)
-            for l, al in enumerate(a_)
-        ]) for a_, theta_ in zip(a, theta)
+            al * torch.sin((l + 1) * theta_ + alphal)
+            for l, (al, alphal) in enumerate(zip(a_, alpha_))
+        ]) for a_, theta_, alpha_ in zip(a, theta, alpha)
     ])
 
     r += torch.stack([
         torch.stack([
-            bl * torch.cos((l + 1) * theta_ + alpha)
-            for l, bl in enumerate(b_)
-        ]) for b_, theta_ in zip(b, theta)
+            bl * torch.cos((l + 1) * theta_ + alphal)
+            for l, (bl, alphal) in enumerate(zip(b_, alpha_))
+        ]) for b_, theta_, alpha_ in zip(b, theta, alpha)
     ])
     r = torch.sum(r, 1)
     r += r0
@@ -123,11 +124,13 @@ def approx_heaviside(s, eps):
 def approx_dirac(s, eps):
     return (1 / (np.pi * eps)) * (1 / (1 + (s / eps)**2))
 
+
 def grad_l1(a):
     grad = torch.zeros_like(a)
     grad[a > 0] = 1
     grad[a < 0] = -1
     return grad
+
 
 def acwe_sphere(center,
                 r0,
@@ -181,20 +184,20 @@ def acwe_sphere(center,
     ])
 
     for i in range(n_iter):
+        n_comps_to_update = int((n_comps / n_iter) * (i + 1)) + 1
         if (i > 1):
             phivar_ = ((phi_new - phi)**2).sqrt().mean()
             energyvar_ = energies[-2] - energies[-1]
             energyvar.append(energyvar_)
             phivar.append(phivar_)
-            print('[{}/{}] dE: {}, dphi: {}'.format(i + 1, n_iter, energyvar_,
-                                                    phivar_))
+            print('[{}/{}] E: {}, dE: {}, dphi: {}'.format(
+                i + 1, n_iter, energies[-1], energyvar_, phivar_))
             if (phivar_ < tol):
                 print('hit tolerance')
                 break
             phi = phi_new
         else:
-            phi = make_phi_spheres(center, r0, a, b, alpha,
-                                   data.shape[1:])
+            phi = make_phi_spheres(center, r0, a, b, alpha, data.shape[1:])
 
         phi_history.append(phi.clone().detach().cpu())
 
@@ -229,39 +232,41 @@ def acwe_sphere(center,
             approx_dirac(phi, eps) * term_2
 
         # derivative wrt r0
-        r0 = r0 + step_size * torch.sum(
-            dE_dphi * dphi_dr0, dim=(1, 2))
+        r0 = r0 + step_size * torch.sum(dE_dphi * dphi_dr0, dim=(1, 2))
 
         # derivative wrt a
-        dE_da = torch.sum(torch.stack(n_comps * [dE_dphi], dim=1) * dphi_da, dim=(2, 3))
-        dE_da += nu*grad_l1(a)
-        a = a + step_size * dE_da
+        dE_da = torch.sum(torch.stack(n_comps * [dE_dphi], dim=1) * dphi_da,
+                          dim=(2, 3))
+        # dE_da += nu * grad_l1(a)
 
         # derivative wrt b
-        dE_db = torch.sum(torch.stack(n_comps * [dE_dphi], dim=1) * dphi_db, dim=(2, 3))
-        dE_db += nu*grad_l1(b)
-        b = b + step_size * dE_db
+        dE_db = torch.sum(torch.stack(n_comps * [dE_dphi], dim=1) * dphi_db,
+                          dim=(2, 3))
+        # dE_db += nu * grad_l1(b)
 
         # derivative wrt alpha
-        # if(i % 30 == 0):
+        # if (i > n_iter // 2):
         dphi_dalpha = torch.stack([
             torch.stack([
-                al * torch.sin((l + 1) * theta_ + alpha_) - 
-                bl * torch.cos((l + 1) * theta_ + alpha_)
-                for l, (al, bl) in enumerate(zip(a_, b_))
+                al * torch.sin((l + 1) * theta_ + alphal) -
+                bl * torch.cos((l + 1) * theta_ + alphal)
+                for l, (al, bl, alphal) in enumerate(zip(a_, b_, alpha_))
             ]) for a_, b_, alpha_, theta_ in zip(a, b, alpha, theta)
         ])
-        dphi_dalpha = torch.sum(dphi_dalpha, dim=1)
-        dE_dalpha = torch.sum(dphi_dalpha * dE_dphi,
-                            dim=(1, 2))
-        alpha = alpha + step_size_phase * dE_dalpha
+        dE_dalpha = torch.sum(torch.stack(n_comps * [dE_dphi], dim=1) *
+                              dphi_dalpha,
+                              dim=(2, 3))
+        alpha[:, :n_comps_to_update] = F.sigmoid(alpha[:, :n_comps_to_update] + step_size_phase * dE_dalpha[:, :n_comps_to_update]) * math.pi
+        a[:, :n_comps_to_update] = F.relu(a[:, :n_comps_to_update] +
+                                         step_size * dE_da[:, :n_comps_to_update])
+        b[:, :n_comps_to_update] = F.relu(b[:, :n_comps_to_update] +
+                                         step_size * dE_db[:, :n_comps_to_update])
 
         # update step size
         step_size = step_size * decay
-        step_size_phase = step_size_phase * decay
+        # step_size_phase = step_size_phase * decay
 
-        phi_new = make_phi_spheres(center, r0, a, b, alpha, 
-                                   data.shape[1:])
+        phi_new = make_phi_spheres(center, r0, a, b, alpha, data.shape[1:])
 
     return {
         'phi': phi_new,
@@ -390,12 +395,7 @@ def acm_ls(phi,
 
 
 class RBFstore:
-    def __init__(self,
-                 center,
-                 n_angles,
-                 n_scales,
-                 n_skews,
-                 shape):
+    def __init__(self, center, n_angles, n_scales, n_skews, shape):
         self.center = center
         self.n_angles = n_angles
         self.n_scales = n_scales
@@ -405,45 +405,57 @@ class RBFstore:
         self.buffer_psi = self.build_psi()
         self.buffer_z = self.build_z()
 
+        psi_rep = torch.repeat_interleave(self.buffer_psi,
+                                          self.buffer_z.shape[0],
+                                          dim=0)
+        z_rep = torch.repeat_interleave(self.buffer_z,
+                                        self.buffer_psi.shape[0],
+                                        dim=0)
+        self.buffer_all = psi_rep * z_rep
+
     def __len__(self):
 
-        return self.n_angles * self.n_scales * self.n_skews
+        return self.n_angles * self.n_scales * self.n_skews * self.n_skews
 
     def build_z(self):
-        skews_x, skews_y = torch.meshgrid([torch.arange(self.n_skews),
-                                         torch.arange(self.n_skews)])
+        skews_x, skews_y = np.meshgrid(np.arange(self.n_skews),
+                                       np.arange(self.n_skews))
         skews_x = skews_x.flatten()
         skews_y = skews_y.flatten()
-        idx = torch.empty(skews_x.shape + (2,))
+        idx = np.empty(skews_x.shape + (2, ))
         idx[..., 0] = skews_x
         idx[..., 1] = skews_y
 
-        buffer = torch.stack([self.get_z(skews_x_idx, skews_y_idx)
-                              for skews_x_idx, skews_y_idx in idx])
-
+        buffer = torch.stack([
+            self.make_z(skews_x_idx, skews_y_idx)
+            for skews_x_idx, skews_y_idx in idx
+        ])
         return buffer
 
     def build_psi(self):
-        angles, scales = torch.meshgrid([torch.arange(self.n_angles),
-                                         torch.arange(self.n_scales)])
+        angles, scales = np.meshgrid(np.arange(self.n_angles),
+                                     np.arange(self.n_scales))
         angles = angles.flatten()
         scales = scales.flatten()
-        idx = torch.empty(angles.shape + (2,))
+        idx = np.empty(angles.shape + (2, ))
         idx[..., 0] = angles
         idx[..., 1] = scales
 
-        buffer = torch.stack([self.get_psi(angle_idx, scale_idx)
-                              for angle_idx, scale_idx in idx])
+        buffer = torch.stack([
+            self.make_psi(angle_idx, scale_idx) for angle_idx, scale_idx in idx
+        ])
 
         return buffer
 
-    def get_z(self, skew_idx_x, skew_idx_y):
-        skew = torch.tensor((1 / self.n_skews * skew_idx_x,
-                             1 / self.n_skews * skew_idx_y))
+    def make_z(self, skew_idx_x, skew_idx_y):
+        skew = torch.tensor(
+            (1 / self.n_skews * skew_idx_x, 1 / self.n_skews * skew_idx_y))
         # apply skew function
         xc = torch.tensor((self.center[1], self.center[0])).float()
-        x, y = torch.meshgrid([torch.arange(self.shape[1]), torch.arange(self.shape[0])])
-        pos = torch.empty(x.shape + (2,))
+        x, y = torch.meshgrid(
+            [torch.arange(self.shape[1]),
+             torch.arange(self.shape[0])])
+        pos = torch.empty(x.shape + (2, ))
         pos[:, :, 0] = x
         pos[:, :, 1] = y
         z = (1 / math.pi) * torch.atan((pos - xc) @ skew) + \
@@ -451,9 +463,9 @@ class RBFstore:
 
         return z
 
-    def get_psi(self, angle_idx, scale_idx):
+    def make_psi(self, angle_idx, scale_idx):
 
-        angle = math.pi / (self.n_angles) * angle_idx
+        angle = (math.pi / (self.n_angles + 1)) * angle_idx
         scale = np.max(self.shape) / (self.n_scales) * (scale_idx + 1)
 
         rot = torch.tensor([[np.cos(angle), -np.sin(angle)],
@@ -462,8 +474,10 @@ class RBFstore:
         cov = rot @ cov @ rot.t()
         rv = multivariate_normal(mean=(self.center[1], self.center[0]),
                                  cov=cov)
-        x, y = torch.meshgrid([torch.arange(self.shape[1]), torch.arange(self.shape[0])])
-        pos = torch.empty(x.shape + (2,))
+        x, y = torch.meshgrid(
+            [torch.arange(self.shape[1]),
+             torch.arange(self.shape[0])])
+        pos = torch.empty(x.shape + (2, ))
         pos[:, :, 0] = x
         pos[:, :, 1] = y
 
@@ -473,20 +487,18 @@ class RBFstore:
         return psi
 
     def make_phi(self, r0, a):
-        angles, scales, skews = torch.meshgrid([torch.arange(self.n_angles),
-                                                torch.arange(self.n_scales),
-                                                torch.arange(self.n_skews)])
-        angles = angles.flatten()
-        scales = scales.flatten()
-        skews = skews.flatten()
+        angles_scales, skews_x_skews_y = np.meshgrid(
+            np.arange(self.n_angles * self.n_scales),
+            np.arange(self.n_skews * self.n_skews))
+        angles_scales = angles_scales.flatten()
+        skews_x_skews_y = skews_x_skews_y.flatten()
 
-        idx = torch.empty(angles.shape + (3,))
-        idx[..., 0] = angles
-        idx[..., 1] = scales
-        idx[..., 2] = skews
-        import pdb; pdb.set_trace() ## DEBUG ##
-        r = torch.stack([a_ * self[idx[i, 0], idx[i, 1], idx[i, 2]]
-                         for i, a_ in enumerate(a)])
+        idx = np.empty(angles_scales.shape + (2, ))
+        idx[..., 0] = angles_scales
+        idx[..., 1] = skews_x_skews_y
+        r = a.unsqueeze(1).unsqueeze(1) * self.buffer_all
+        r = torch.sum(r, dim=0)
+        r = r + r0
 
         x, y = torch.meshgrid([
             torch.arange(self.center[0], dtype=torch.float),
@@ -496,37 +508,192 @@ class RBFstore:
             torch.arange(self.shape[1], dtype=torch.float),
             torch.arange(self.shape[0], dtype=torch.float)
         ])
-        x = x - self.center[0]
-        y = y - self.center[1]
+        x = x - self.center[1]
+        y = y - self.center[0]
 
         phi = torch.norm(torch.stack((x, y)), dim=0) - r
 
+        return phi
 
-def make_phi_rbf(center, r0, a, shape):
-    x, y = torch.meshgrid([
-        torch.arange(shape[1], dtype=torch.float),
-        torch.arange(shape[0], dtype=torch.float)
+
+def acwe_rbf(data,
+             rbfstore,
+             r0,
+             a,
+             n_iters,
+             tol=10e-3,
+             step_size=0.001,
+             lambda1=1,
+             lambda2=1,
+             eps=1):
+
+    phi_history = []
+    energies = []
+    energies_in = []
+    energies_out = []
+
+    phivar = []
+    energyvar = []
+
+    dphi_dr0 = -1
+    dphi_da = rbfstore.buffer_all
+    for i in range(n_iters):
+        if (i > 1):
+            phivar_ = ((phi_new - phi)**2).sqrt().mean()
+            energyvar_ = energies[-2] - energies[-1]
+            energyvar.append(energyvar_)
+            phivar.append(phivar_)
+            print('[{}/{}] E: {:.4f} dE: {:.4f}, dphi: {:.4f}'.format(
+                i + 1, n_iters, energies[-1], energyvar_, phivar_))
+            if (phivar_ < tol):
+                print('hit tolerance')
+                break
+            phi = phi_new
+        else:
+            phi = rbfstore.make_phi(r0, a)
+
+        phi_history.append(phi.clone().detach().cpu())
+
+        # inside
+        c1_nom = torch.sum((data * (1 - approx_heaviside(phi, eps))),
+                           dim=(-2, -1))
+        c1_denom = torch.sum((1 - approx_heaviside(phi, eps)), dim=(-2, -1))
+        c1 = c1_nom / c1_denom
+
+        # outside
+        c2_nom = torch.sum((data * (approx_heaviside(phi, eps))), dim=(-2, -1))
+        c2_denom = torch.sum((approx_heaviside(phi, eps)), dim=(-2, -1))
+        c2 = c2_nom / c2_denom
+
+        term_1 = lambda1 * (data - c1)**2
+        term_2 = lambda2 * (data - c2)**2
+        energy_in = torch.sum((1 - approx_heaviside(phi, eps)) * term_1)
+        energy_out = torch.sum((approx_heaviside(phi, eps)) * term_2)
+        energy = energy_in + energy_out
+
+        energies.append(energy.cpu().detach().numpy())
+        energies_in.append(energy_in.cpu().detach().numpy())
+        energies_out.append(energy_out.cpu().detach().numpy())
+
+        dE_dphi = approx_dirac(phi, eps) * term_1 - \
+            approx_dirac(phi, eps) * term_2
+
+        dE_dphi = torch.stack(dphi_da.shape[0] * [dE_dphi], dim=0)
+
+        # derivative wrt r0
+        r0 = r0 + step_size * torch.sum(dE_dphi[0, ...] * dphi_dr0)
+
+        # derivative wrt a
+        dE_da = -torch.sum(dE_dphi * dphi_da, dim=(1, 2))
+        a = a + step_size * dE_da
+        a = F.relu(a)
+        # a = a / torch.norm(a, p=0)
+
+        phi_new = rbfstore.make_phi(r0, a)
+
+    return {
+        'phi': phi_new,
+        'phi_history': phi_history,
+        'r0': r0,
+        'a': a,
+        'E': energies,
+        'E_in': energies_in,
+        'E_out': energies_out,
+        'Evar': energyvar,
+        'iters': i
+    }
+
+
+def acwe_diff(data,
+              r,
+              n_iters,
+              tol=10e-3,
+              step_size=0.001,
+              lambda1=1,
+              lambda2=1,
+              eps=1):
+
+    phi_history = []
+    energies = []
+    energies_in = []
+    energies_out = []
+
+    phivar = []
+    energyvar = []
+
+    dphi_dr0 = -1
+    dphi_da = rbfstore.buffer_all
+    for i in range(n_iters):
+        if (i > 1):
+            phivar_ = ((phi_new - phi)**2).sqrt().mean()
+            energyvar_ = energies[-2] - energies[-1]
+            energyvar.append(energyvar_)
+            phivar.append(phivar_)
+            print('[{}/{}] E: {:.4f} dE: {:.4f}, dphi: {:.4f}'.format(
+                i + 1, n_iters, energies[-1], energyvar_, phivar_))
+            if (phivar_ < tol):
+                print('hit tolerance')
+                break
+            phi = phi_new
+        else:
+            phi = rbfstore.make_phi(r0, a)
+
+        phi_history.append(phi.clone().detach().cpu())
+
+        # inside
+        c1_nom = torch.sum((data * (1 - approx_heaviside(phi, eps))),
+                           dim=(-2, -1))
+        c1_denom = torch.sum((1 - approx_heaviside(phi, eps)), dim=(-2, -1))
+        c1 = c1_nom / c1_denom
+
+        # outside
+        c2_nom = torch.sum((data * (approx_heaviside(phi, eps))), dim=(-2, -1))
+        c2_denom = torch.sum((approx_heaviside(phi, eps)), dim=(-2, -1))
+        c2 = c2_nom / c2_denom
+
+        term_1 = lambda1 * (data - c1)**2
+        term_2 = lambda2 * (data - c2)**2
+        energy_in = torch.sum((1 - approx_heaviside(phi, eps)) * term_1)
+        energy_out = torch.sum((approx_heaviside(phi, eps)) * term_2)
+        energy = energy_in + energy_out
+
+        energies.append(energy.cpu().detach().numpy())
+        energies_in.append(energy_in.cpu().detach().numpy())
+        energies_out.append(energy_out.cpu().detach().numpy())
+
+        dE_dphi = approx_dirac(phi, eps) * term_1 - \
+            approx_dirac(phi, eps) * term_2
+
+        dE_dphi = torch.stack(dphi_da.shape[0] * [dE_dphi], dim=0)
+
+        # derivative wrt r0
+        r0 = r0 + step_size * torch.sum(dE_dphi[0, ...] * dphi_dr0)
+
+        # derivative wrt a
+        dE_da = -torch.sum(dE_dphi * dphi_da, dim=(1, 2))
+        a = a + step_size * dE_da
+        a = F.relu(a)
+
+        phi_new = rbfstore.make_phi(r0, a)
+
+    return {
+        'phi': phi_new,
+        'phi_history': phi_history,
+        'r0': r0,
+        'a': a,
+        'E': energies,
+        'E_in': energies_in,
+        'E_out': energies_out,
+        'Evar': energyvar,
+        'iters': i
+    }
+
+
+def rays_to_xy(r, xc):
+    angles = torch.linspace(0, 2 * math.pi, r.shape[0])
+    p = torch.stack([
+        r_ * torch.tensor((torch.cos(a), torch.sin(a)))
+        for a, r_ in zip(angles, r)
     ])
-    x = torch.stack([x - center_[1] for center_ in center])
-    y = torch.stack([y - center_[0] for center_ in center])
-
-    theta = torch.atan2(x, y)
-    r = torch.stack([
-        torch.stack([
-            al * torch.sin((l + 1) * theta_ + alpha)
-            for l, al in enumerate(a_)
-        ]) for a_, theta_ in zip(a, theta)
-    ])
-
-    r += torch.stack([
-        torch.stack([
-            bl * torch.cos((l + 1) * theta_ + alpha)
-            for l, bl in enumerate(b_)
-        ]) for b_, theta_ in zip(b, theta)
-    ])
-    r = torch.sum(r, 1)
-    r += r0
-
-    phi = torch.norm(torch.stack((x, y)), dim=0) - r
-
-    return phi
+    p += xc
+    return p
