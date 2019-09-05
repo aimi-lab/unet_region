@@ -8,11 +8,12 @@ from unet_region.rw_net.rw_layer import RandomWalk
 from os.path import join as pjoin
 from skimage import io, draw, segmentation, color, transform
 from torch_geometric import nn as gnn
+from torch_geometric.data import Data, Batch
 import torch
 
 root_dir = '/home/ubelix/data/medical-labeling'
 
-out_size = 256
+out_size = 100
 radius_pw = 5
 n_workers = 4
 
@@ -26,6 +27,11 @@ img_gray = color.rgb2gray(img)
 width_bg = 2
 
 truth = transform.resize(truth, (out_size, out_size))
+truth[0, :] = 0
+truth[-1, :] = 0
+truth[:, 0] = 0
+truth[:, -1] = 0
+
 truth_contour = (segmentation.find_boundaries(truth > 0))
 
 edge_softmax = EdgeSoftmax()
@@ -39,10 +45,14 @@ N = 2
 C = 1
 truth = torch.repeat_interleave(truth, N, 0)
 truth = torch.repeat_interleave(truth, C, 1)
-W_truth = rwu.make_sparse_pairwise(truth, 1, radius_pw, 1).coalesce()
+W_truth = rwu.make_sparse_pairwise(truth, 1, radius_pw, 1)
 
 # make similarity
 A_truth = edge_softmax(W_truth)
+
+# test decimate inversion
+A_test = rwu.graph_to_tensors(A_truth.to_data_list()[0]).coalesce()
+A_inv = rwu.eigendecomposition_downsample(A_test, 5)
 
 f0 = torch.zeros((N, 2, out_size, out_size))
 
@@ -57,9 +67,14 @@ f0[:, 0, :, -1] = 1
 
 rw_out = rw_branch(A_truth, f0)
 
-fig, ax = plt.subplots(1, 2)
+fig, ax = plt.subplots(2, 3)
+ax = ax.flatten()
 ax[0].imshow(f0[0, 0, ...])
 ax[1].imshow(f0[0, 1, ...])
+ax[2].imshow(rw_out[0, ...].argmax(0))
+ax[3].imshow(rw_out[0, 0, ...])
+ax[4].imshow(rw_out[0, 1, ...])
+ax[5].imshow(truth[0, 0, ...])
 fig.show()
 
 # n_iter = 1

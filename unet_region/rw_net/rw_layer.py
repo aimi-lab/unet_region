@@ -9,12 +9,14 @@ class RandomWalk(torch.nn.Module):
 
     Args:
     """
-
-    def __init__(self):
+    def __init__(self, alpha=0.5, mode='single'):
         super(RandomWalk, self).__init__()
+        assert (mode == 'single'
+                or mode == 'all'), 'mode should be single or all'
+        self.mode = mode
+        self.alpha = alpha
 
     def forward(self, batch_aff, batch_activ):
-
         """
         batch_activ is a tensor of shape (N,C,W,H) with C the class index (0: bg, 1: fg)
         batch_aff are graphs where edge attributes are probability of being neighbors
@@ -31,5 +33,5 @@ class RandomWalk(torch.nn.Module):
         for A, f in zip(batch_aff, batch_activ):
             y_tilda_ = A.mm(f.t())
             y_tilda.append(y_tilda_.t().reshape(ba_c, ba_h, ba_w))
-        
+
         return torch.stack(y_tilda)
